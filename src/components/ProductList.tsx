@@ -38,8 +38,8 @@ export default function ProductList({ categoria, title }: ProductListProps) {
   return (
     <div className="py-6 sm:py-10">
       <div className="flex items-center mb-6 sm:mb-8 px-4 sm:px-0">
-        <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-800 tracking-tight flex items-center gap-3">
-          <span className="w-1.5 h-8 bg-blue-600 rounded-full inline-block"></span>
+        <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-800 dark:text-slate-100 tracking-tight flex items-center gap-3">
+          <span className="w-1.5 h-8 bg-blue-600 dark:bg-blue-500 rounded-full inline-block"></span>
           {title}
         </h2>
       </div>
@@ -64,7 +64,7 @@ export default function ProductList({ categoria, title }: ProductListProps) {
             ))}
         
         {!loading && produtos.length === 0 && !error && (
-          <div className="col-span-full py-16 text-center text-gray-500 bg-gray-50 rounded-xl border border-dashed border-gray-300">
+          <div className="col-span-full py-16 text-center text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-slate-900/50 rounded-xl border border-dashed border-gray-300 dark:border-slate-700">
             <p className="text-lg font-medium">Nenhum produto encontrado para "{title}".</p>
             <p className="text-sm mt-2">Tente novamente mais tarde.</p>
           </div>
