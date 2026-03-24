@@ -9,9 +9,6 @@ export default function Home() {
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 w-80 h-80 rounded-full bg-blue-400 opacity-20 blur-3xl"></div>
         
         <div className="relative z-10 flex flex-col items-center">
-          <span className="inline-block py-1.5 px-4 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-yellow-300 text-xs sm:text-sm font-black tracking-widest mb-4 sm:mb-6 uppercase shadow-[0_0_15px_rgba(250,204,21,0.3)]">
-            Plataforma Oficial
-          </span>
           <h1 className="text-3xl sm:text-5xl md:text-6xl font-black mb-4 sm:mb-6 tracking-tight text-white drop-shadow-lg leading-tight">
             Descubra o Melhor do <br className="hidden sm:block" />
             <span className="text-yellow-400 drop-shadow-[0_2px_10px_rgba(0,0,0,0.3)]">Mercado Livre</span>

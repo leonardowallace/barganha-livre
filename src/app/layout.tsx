@@ -33,6 +33,12 @@ export default function RootLayout({
             <p className="text-xs text-slate-500 mt-2 text-center max-w-md">
               Os links de compra neste site redirecionam para o Mercado Livre. Ao comprar através de nossos links, podemos receber uma comissão de afiliado sem custo adicional para você.
             </p>
+            <div className="mt-4 px-4 py-2 bg-slate-800/50 rounded-lg border border-slate-800 flex items-center gap-2">
+              <svg className="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              <p className="text-xs text-slate-400">
+                Os preços e a disponibilidade dos produtos são atualizados automaticamente a cada 5 horas e podem sofrer variações.
+              </p>
+            </div>
           </div>
         </footer>
       </body>
