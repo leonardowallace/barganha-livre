@@ -6,6 +6,8 @@ export function generateStaticParams() {
     { categoria: 'eletronicos' },
     { categoria: 'casa' },
     { categoria: 'moda' },
+    { categoria: 'saude' },
+    { categoria: 'estudos' },
     { categoria: 'esportes' },
     { categoria: 'beleza' },
     { categoria: 'automotivo' },
@@ -16,9 +18,11 @@ const CATEGORY_NAMES: Record<string, string> = {
   eletronicos: 'Eletrônicos',
   casa: 'Casa e Decoração',
   moda: 'Moda e Acessórios',
+  saude: 'Saúde e Bem-estar',
+  estudos: 'Livros e Estudos',
   esportes: 'Esportes e Lazer',
   beleza: 'Beleza e Cuidado Pessoal',
-  automotivo: 'Autopeças e Acessórios Automotivos',
+  automotivo: 'Autopeças',
 };
 
 export default async function CategoryPage({ params }: { params: Promise<{ categoria: string }> }) {

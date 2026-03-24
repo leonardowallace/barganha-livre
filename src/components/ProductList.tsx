@@ -36,11 +36,13 @@ export default function ProductList({ categoria, title }: ProductListProps) {
   }, [categoria]);
 
   return (
-    <div className="py-8">
-      <div className="flex items-center mb-8 px-4 sm:px-0">
-        <h1 className="text-3xl font-bold text-gray-900 border-l-4 border-blue-600 pl-4">{title}</h1>
+    <div className="py-6 sm:py-10">
+      <div className="flex items-center mb-6 sm:mb-8 px-4 sm:px-0">
+        <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-800 tracking-tight flex items-center gap-3">
+          <span className="w-1.5 h-8 bg-blue-600 rounded-full inline-block"></span>
+          {title}
+        </h2>
       </div>
-      
       {error && (
         <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 mb-8 mx-4 sm:mx-0 rounded-r-md shadow-sm" role="alert">
           <p className="font-medium">Ops! Tivemos um problema.</p>
@@ -48,7 +50,7 @@ export default function ProductList({ categoria, title }: ProductListProps) {
         </div>
       )}
 
-      <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-6 px-4 sm:px-0">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-6 px-4 sm:px-0">
         {loading
           ? Array.from({ length: 15 }).map((_, i) => <SkeletonCard key={i} />)
           : produtos.map((produto) => (

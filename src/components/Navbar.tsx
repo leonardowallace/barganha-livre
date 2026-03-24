@@ -5,6 +5,8 @@ const categories = [
   { name: 'Eletrônicos', path: '/eletronicos' },
   { name: 'Casa', path: '/casa' },
   { name: 'Moda', path: '/moda' },
+  { name: 'Saúde', path: '/saude' },
+  { name: 'Estudos', path: '/estudos' },
   { name: 'Esportes', path: '/esportes' },
   { name: 'Beleza', path: '/beleza' },
   { name: 'Automotivo', path: '/automotivo' },

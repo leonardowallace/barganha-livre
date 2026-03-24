@@ -8,17 +8,16 @@ export default function Home() {
         <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 rounded-full bg-white opacity-10 blur-3xl"></div>
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 w-80 h-80 rounded-full bg-blue-400 opacity-20 blur-3xl"></div>
         
-        <div className="relative z-10">
-          <span className="inline-block py-1.5 px-3 rounded-full bg-yellow-400/20 border border-yellow-400/40 text-yellow-300 text-sm font-bold tracking-wide mb-6 uppercase shadow-sm">
-            Plataforma de Afiliados
+        <div className="relative z-10 flex flex-col items-center">
+          <span className="inline-block py-1.5 px-4 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-yellow-300 text-xs sm:text-sm font-black tracking-widest mb-4 sm:mb-6 uppercase shadow-[0_0_15px_rgba(250,204,21,0.3)]">
+            Plataforma Oficial
           </span>
-          <h1 className="text-4xl sm:text-5xl md:text-6xl font-black mb-6 tracking-tight text-white drop-shadow-md">
+          <h1 className="text-3xl sm:text-5xl md:text-6xl font-black mb-4 sm:mb-6 tracking-tight text-white drop-shadow-lg leading-tight">
             Descubra o Melhor do <br className="hidden sm:block" />
-            <span className="text-yellow-400 drop-shadow-lg">Mercado Livre</span>
+            <span className="text-yellow-400 drop-shadow-[0_2px_10px_rgba(0,0,0,0.3)]">Mercado Livre</span>
           </h1>
-          <p className="text-lg sm:text-xl text-white max-w-2xl mx-auto leading-relaxed font-medium drop-shadow">
-            Curadoria automática das ofertas com maior número de vendas e relevância.
-            Tudo em um só lugar, atualizado pra você.
+          <p className="text-base sm:text-xl text-blue-50 max-w-2xl mx-auto leading-relaxed font-medium drop-shadow-md px-2">
+            Curadoria inteligente com os produtos mais desejados, melhores preços e promoções verificadas em tempo real.
           </p>
         </div>
       </div>

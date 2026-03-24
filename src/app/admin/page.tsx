@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 
-const categorias = ['eletronicos', 'casa', 'moda', 'esportes', 'beleza', 'automotivo'];
+const categorias = ['eletronicos', 'casa', 'moda', 'saude', 'estudos', 'esportes', 'beleza', 'automotivo'];
 
 export default function AdminPage() {
   const [url, setUrl] = useState('');
