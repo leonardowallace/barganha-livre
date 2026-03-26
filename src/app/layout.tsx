@@ -16,21 +16,28 @@ export default function RootLayout({
     <html lang="pt-BR" className="scroll-smooth" suppressHydrationWarning>
       <head>
         {/* Google Analytics */}
-        <script async src="https://www.googletagmanager.com/gtag/js?id=G-KG1VQ2LYRK"></script>
+        <script 
+          async 
+          src={`https://www.googletagmanager.com/gtag/js?id=${process.env.NEXT_PUBLIC_GA_ID || 'G-KG1VQ2LYRK'}`}
+        ></script>
         <script
           dangerouslySetInnerHTML={{
             __html: `
               window.dataLayer = window.dataLayer || [];
               function gtag(){dataLayer.push(arguments);}
               gtag('js', new Date());
-              gtag('config', 'G-KG1VQ2LYRK');
+              gtag('config', '${process.env.NEXT_PUBLIC_GA_ID || 'G-KG1VQ2LYRK'}');
             `,
           }}
         />
         {/* Google Adsense */}
         <script 
           async 
-          src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${process.env.NEXT_PUBLIC_ADSENSE_ID || 'ca-pub-0000000000000000'}`} 
+          src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${
+            process.env.NEXT_PUBLIC_ADSENSE_ID?.startsWith('pub-') 
+              ? `ca-${process.env.NEXT_PUBLIC_ADSENSE_ID}` 
+              : (process.env.NEXT_PUBLIC_ADSENSE_ID || 'ca-pub-0000000000000000')
+          }`} 
           crossOrigin="anonymous">
         </script>
       </head>
