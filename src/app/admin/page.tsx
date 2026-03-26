@@ -16,6 +16,8 @@ export default function AdminPage() {
   const [authed, setAuthed] = useState(false);
 
   const [loadingSync, setLoadingSync] = useState(false);
+  const [syncMode, setSyncMode] = useState<'auto' | 'manual'>('auto');
+  const [manualHtml, setManualHtml] = useState('');
 
   const fetchProdutos = async (pwd: string) => {
     try {
@@ -32,59 +34,69 @@ export default function AdminPage() {
     }
   };
 
-  const handleSyncVitrine = async () => {
-    setLoadingSync(true);
-    setMsg({ text: 'Iniciando sincronização inteligente... (Bypass de Bloqueio)', type: 'info' });
-    
-    try {
-      const urlVitrine = 'https://www.mercadolivre.com.br/social/rodriguesleonardo2022060705062/lists/765f49c4-4f0c-4da3-9d46-e3ffe7e32ce2?matt_tool=55704581&forceInApp=true';
-      
-      // Usamos o proxy AllOrigins para evitar CORS e o link direto para evitar 502 do servidor
-      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(urlVitrine)}`;
-      
-      const resProxy = await fetch(proxyUrl);
-      if (!resProxy.ok) throw new Error('Falha ao conectar com o servidor de sincronização.');
-      
-      const proxyData = await resProxy.json();
-      const html = proxyData.contents;
-      
-      const marker = '_n.ctx.r=';
-      const markerIdx = html.indexOf(marker);
-      if (markerIdx === -1) throw new Error('Dados não encontrados. Verifique se o link da vitrine está correto.');
+  const processVitrineHtml = (html: string) => {
+    const marker = '_n.ctx.r=';
+    const markerIdx = html.indexOf(marker);
+    if (markerIdx === -1) throw new Error('Estrutura de dados não encontrada. Verifique se copiou o código correto.');
 
-      const startIdx = markerIdx + marker.length;
-      let depth = 0;
-      let endIdx = -1;
-      let foundStart = false;
+    const startIdx = markerIdx + marker.length;
+    let depth = 0;
+    let endIdx = -1;
+    let foundStart = false;
 
-      for (let i = startIdx; i < html.length; i++) {
+    // Busca equilibrada de chaves para extrair o JSON do objeto global do ML
+    for (let i = startIdx; i < html.length; i++) {
         if (html[i] === '{') { depth++; foundStart = true; }
         else if (html[i] === '}') {
           depth--;
           if (foundStart && depth === 0) { endIdx = i; break; }
         }
+    }
+
+    if (endIdx === -1) throw new Error('Erro ao delimitar dados. Tente copiar novamente.');
+
+    const jsonStr = html.substring(startIdx, endIdx + 1);
+    const data = JSON.parse(jsonStr);
+    const polycards = data.appProps?.pageProps?.polycards || [];
+    
+    return polycards.map((p: any) => {
+      const titleComp = p.components?.find((c: any) => c.type === 'title');
+      const priceComp = p.components?.find((c: any) => c.type === 'price');
+      const id = p.pictures?.pictures?.[0]?.id || p.metadata?.id || p.unique_id;
+      return {
+        id: id,
+        title: titleComp?.title?.text || 'Produto',
+        price: priceComp?.price?.current_price?.value || 0,
+        image: id ? `https://http2.mlstatic.com/D_NQ_NP_${id}-O.webp` : '',
+        permalink: p.metadata?.url + (p.metadata?.url_params || '') + (p.metadata?.url_fragments || '')
+      };
+    });
+  };
+
+  const handleSyncVitrine = async () => {
+    setLoadingSync(true);
+    setMsg({ text: 'Sincronizando...', type: 'info' });
+    
+    try {
+      let items = [];
+
+      if (syncMode === 'manual') {
+        if (!manualHtml) throw new Error('Cole o código-fonte da página primeiro.');
+        items = processVitrineHtml(manualHtml);
+      } else {
+        const urlVitrine = 'https://www.mercadolivre.com.br/social/rodriguesleonardo2022060705062/lists/765f49c4-4f0c-4da3-9d46-e3ffe7e32ce2?matt_tool=55704581&forceInApp=true';
+        // Bypass via proxy AllOrigins para evitar 502 do servidor e restrições de rede
+        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(urlVitrine)}`;
+        
+        const resProxy = await fetch(proxyUrl);
+        if (!resProxy.ok) throw new Error('Erro de conexão. Use o Modo Manual abaixo.');
+        
+        const proxyData = await resProxy.json();
+        items = processVitrineHtml(proxyData.contents);
       }
 
-      if (endIdx === -1) throw new Error('Erro ao processar dados da página.');
+      if (items.length === 0) throw new Error('Nenhum produto encontrado no código fornecido.');
 
-      const jsonStr = html.substring(startIdx, endIdx + 1);
-      const data = JSON.parse(jsonStr);
-      const polycards = data.appProps?.pageProps?.polycards || [];
-      
-      const items = polycards.map((p: any) => {
-        const titleComp = p.components?.find((c: any) => c.type === 'title');
-        const priceComp = p.components?.find((c: any) => c.type === 'price');
-        const id = p.pictures?.pictures?.[0]?.id || p.metadata?.id || p.unique_id;
-        return {
-          id: id,
-          title: titleComp?.title?.text || 'Produto',
-          price: priceComp?.price?.current_price?.value || 0,
-          image: id ? `https://http2.mlstatic.com/D_NQ_NP_${id}-O.webp` : '',
-          permalink: p.metadata?.url + (p.metadata?.url_params || '') + (p.metadata?.url_fragments || '')
-        };
-      });
-
-      // Salva no Firestore via Servidor
       const resSave = await fetch('/api/admin/sync-vitrine', {
         method: 'POST',
         headers: { 
@@ -95,9 +107,9 @@ export default function AdminPage() {
       });
       
       const finalData = await resSave.json();
-      
       if (finalData.success) {
-        setMsg({ text: finalData.message, type: 'success' });
+        setMsg({ text: `${finalData.message} (${items.length} itens)`, type: 'success' });
+        setManualHtml('');
         fetchProdutos(password);
       } else {
         setMsg({ text: 'Erro ao salvar: ' + (finalData.error || 'Erro desconhecido'), type: 'error' });
@@ -191,7 +203,7 @@ export default function AdminPage() {
   if (!authed) {
     return (
       <div className="flex justify-center items-center min-h-[70vh] px-4">
-        <form onSubmit={handleLogin} className="bg-white dark:bg-slate-900 p-8 rounded-2xl shadow-xl border border-gray-100 dark:border-slate-800 text-center w-full max-w-sm transition-all">
+        <form onSubmit={handleLogin} className="bg-white dark:bg-slate-900 p-8 rounded-2xl shadow-xl border border-gray-100 dark:border-slate-800 text-center w-full max-sm:max-w-full max-w-sm transition-all">
           <div className="w-16 h-16 bg-blue-600 rounded-2xl mx-auto mb-6 flex items-center justify-center shadow-lg shadow-blue-500/20">
             <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
           </div>
@@ -294,38 +306,95 @@ export default function AdminPage() {
         </form>
       </div>
 
+      {/* Sincronização de Vitrine */}
+      <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] shadow-sm border border-gray-100 dark:border-slate-800 mb-12">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+          <div>
+            <h2 className="text-2xl font-black text-gray-900 dark:text-white flex items-center gap-3">
+              <span className="w-2 h-8 bg-indigo-600 rounded-full"></span>
+              Vitrine Social Mercado Livre
+            </h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Importe produtos da sua lista de recomendações automaticamente.</p>
+          </div>
+          
+          <div className="flex bg-gray-100 dark:bg-slate-800 rounded-xl p-1 border border-gray-200 dark:border-slate-700">
+            <button 
+              onClick={() => setSyncMode('auto')}
+              type="button"
+              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${syncMode === 'auto' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'}`}
+            >
+              Automático
+            </button>
+            <button 
+              onClick={() => setSyncMode('manual')}
+              type="button"
+              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${syncMode === 'manual' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'}`}
+            >
+              Manual (Código)
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          {syncMode === 'manual' ? (
+            <div className="space-y-4">
+              <div className="bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-800/30 p-4 rounded-2xl">
+                <p className="text-xs text-indigo-700 dark:text-indigo-300 leading-relaxed">
+                  <strong>Bypass de Bloqueio:</strong> Se o modo automático falhar, entre na sua lista no ML pelo navegador, pressione <code>Ctrl+U</code>, selecione tudo (<code>Ctrl+A</code>), copie e cole aqui.
+                </p>
+              </div>
+              <textarea
+                value={manualHtml}
+                onChange={(e) => setManualHtml(e.target.value)}
+                placeholder="Cole aqui o código-fonte (HTML) da sua vitrine do Mercado Livre..."
+                className="w-full h-40 bg-gray-50 dark:bg-slate-800/50 border border-gray-200 dark:border-slate-700 rounded-2xl px-4 py-4 text-gray-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-mono text-[10px]"
+              />
+            </div>
+          ) : (
+            <div className="bg-gray-50 dark:bg-slate-800/30 border border-gray-200 dark:border-slate-700 p-6 rounded-2xl text-center">
+              <p className="text-gray-500 dark:text-gray-400 text-sm">O sistema tentará buscar os produtos usando o link direto da sua vitrine social via proxy.</p>
+            </div>
+          )}
+
+          <button
+            onClick={handleSyncVitrine}
+            disabled={loadingSync}
+            className={`w-full py-4 rounded-2xl flex items-center justify-center gap-3 font-bold text-lg transition-all ${
+              loadingSync 
+              ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+              : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-xl shadow-indigo-500/20 active:scale-[0.98]'
+            }`}
+          >
+            {loadingSync ? (
+              <>
+                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                Sincronizando...
+              </>
+            ) : (
+              <>
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Sync Vitrine Social
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
       <div className="flex flex-col sm:flex-row justify-between items-end sm:items-center mb-8 gap-4 px-1">
         <div>
           <h2 className="text-2xl font-black text-gray-900 dark:text-white">Seus Produtos ({produtos.length})</h2>
           <p className="text-sm text-gray-500 dark:text-gray-400">Gerencie sua listagem atual no site.</p>
         </div>
         
-        <div className="flex gap-3 w-full sm:w-auto">
-          <button
-            onClick={handleSyncVitrine}
-            disabled={loadingSync}
-            className={`flex items-center justify-center gap-2 flex-grow sm:flex-initial py-3 px-5 rounded-2xl text-sm font-bold transition-all border ${
-              loadingSync 
-              ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200' 
-              : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-500/20 active:scale-95 border-transparent'
-            }`}
-          >
-            {loadingSync ? 'Sincronizando...' : (
-              <>
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                Sync Vitrine Social
-              </>
-            )}
-          </button>
-          
-          <button
-             onClick={() => fetchProdutos(password)}
-             className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 p-3 rounded-2xl text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-800 transition-all active:scale-95"
-             title="Atualizar Lista"
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-          </button>
-        </div>
+        <button
+           onClick={() => fetchProdutos(password)}
+           className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 p-3 rounded-2xl text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-800 transition-all active:scale-95"
+           title="Atualizar Lista"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+        </button>
       </div>
       
       <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden">
