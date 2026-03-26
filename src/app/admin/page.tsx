@@ -253,25 +253,12 @@ export default function AdminPage() {
       let extractedData = null;
 
       // 1. Tenta extrair dados via Cliente (evita bloqueio no servidor)
+      // 1. Tenta extrair dados via Proxy Interno (mais estável)
       try {
-        let html = '';
-        const proxies = [
-          (u: string) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`,
-          (u: string) => `https://corsproxy.io/?${encodeURIComponent(u)}`
-        ];
-
-        for (const getProxy of proxies) {
-          try {
-            const res = await fetch(getProxy(url));
-            if (res.ok) {
-              const data = await res.json();
-              html = data.contents || data;
-              if (html && html.length > 500) break;
-            }
-          } catch (e) {}
-        }
-
-        if (html) {
+        const proxyUrl = `/api/admin/proxy?url=${encodeURIComponent(url)}`;
+        const resProxy = await fetch(proxyUrl);
+        if (resProxy.ok) {
+          const html = await resProxy.text();
           const titleMatch = html.match(/<meta\s+(?:property|name)="og:title"\s+content="([^"]+)"/i);
           const imageMatch = html.match(/<meta\s+(?:property|name)="og:image"\s+content="([^"]+)"/i);
           const priceMatch = html.match(/<meta\s+itemprop="price"\s+content="([^"]+)"/i) || html.match(/"price":\s*(\d+(?:\.\d+)?)/i);
@@ -285,7 +272,7 @@ export default function AdminPage() {
           }
         }
       } catch (e) {
-        console.warn('Erro na extração via cliente, tentando servidor...', e);
+        console.warn('Erro na extração via proxy interno:', e);
       }
 
       const res = await fetch('/api/admin/produtos', {
@@ -483,10 +470,10 @@ export default function AdminPage() {
               <div className="bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-800/30 p-5 rounded-2xl">
                 <h4 className="text-sm font-bold text-indigo-900 dark:text-indigo-100 mb-2">Instruções do Modo Turbo (Mais Seguro):</h4>
                 <ol className="text-xs text-indigo-700 dark:text-indigo-300 space-y-2 list-decimal ml-4">
-                  <li>Abra sua vitrine no Mercado Livre.</li>
-                  <li>Aperte <code>F12</code> ou clique em Inspecionar &gt; Console.</li>
-                  <li>Cole o script que eu te passei no chat e aperte <code>Enter</code>.</li>
-                  <li>Os dados serão copiados. Volte aqui e cole abaixo.</li>
+                  <li>Abra sua vitrine no ML.</li>
+                  <li>Inspecionar &gt; Console (F12).</li>
+                  <li>Cole o <b>Script V2</b> que te passei e dê Enter.</li>
+                  <li>Cole o resultado gerado no campo abaixo.</li>
                 </ol>
               </div>
               <textarea
