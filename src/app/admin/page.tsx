@@ -118,40 +118,59 @@ export default function AdminPage() {
         if (!manualHtml) throw new Error('Cole o código-fonte da página primeiro.');
         items = processVitrineHtml(manualHtml);
       } else {
-        const urlVitrine = 'https://www.mercadolivre.com.br/social/rodriguesleonardo2022060705062/lists/765f49c4-4f0c-4da3-9d46-e3ffe7e32ce2?matt_tool=55704581&forceInApp=true';
+        const baseUrl = 'https://www.mercadolivre.com.br/social/rodriguesleonardo2022060705062/lists/765f49c4-4f0c-4da3-9d46-e3ffe7e32ce2?matt_tool=55704581&forceInApp=true';
         
-        let html = '';
-        const proxies = [
-          { fn: (u: string) => `/api/admin/proxy?url=${encodeURIComponent(u)}`, type: 'text' },
-          { fn: (u: string) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`, type: 'json' },
-          { fn: (u: string) => `https://corsproxy.io/?${encodeURIComponent(u)}`, type: 'text' },
-          { fn: (u: string) => `https://thingproxy.freeboard.io/fetch/${u}`, type: 'text' }
-        ];
+        let allItems: any[] = [];
+        // Percorre até 5 páginas (cerca de 75-100 itens)
+        for (let page = 1; page <= 5; page++) {
+          setMsg({ text: `Buscando produtos da página ${page}...`, type: 'info' });
+          const urlVitrine = page === 1 ? baseUrl : `${baseUrl}&page=${page}`;
+          let html = '';
+          
+          const proxies = [
+            { fn: (u: string) => `/api/admin/proxy?url=${encodeURIComponent(u)}`, type: 'text' },
+            { fn: (u: string) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`, type: 'json' },
+            { fn: (u: string) => `https://corsproxy.io/?${encodeURIComponent(u)}`, type: 'text' },
+            { fn: (u: string) => `https://thingproxy.freeboard.io/fetch/${u}`, type: 'text' }
+          ];
 
-        for (const proxy of proxies) {
-          try {
-            console.log('Tentando proxy:', proxy.fn(urlVitrine));
-            const res = await fetch(proxy.fn(urlVitrine));
-            if (res.ok) {
-              if (proxy.type === 'json') {
-                const data = await res.json();
-                html = data.contents || data;
-              } else {
-                html = await res.text();
+          for (const proxy of proxies) {
+            try {
+              const res = await fetch(proxy.fn(urlVitrine));
+              if (res.ok) {
+                if (proxy.type === 'json') {
+                  const data = await res.json();
+                  html = data.contents || data;
+                } else {
+                  html = await res.text();
+                }
+                if (html && html.length > 1000) break;
               }
-              
-              if (html && html.length > 1000) {
-                console.log('HTML obtido com sucesso via proxy');
-                break;
-              }
+            } catch (e) {
+              console.warn(`Proxy falhou na página ${page}, tentando próximo...`);
             }
-          } catch (e) {
-            console.warn('Proxy falhou, tentando próximo...', e);
+          }
+
+          if (html) {
+            try {
+              const pageItems = processVitrineHtml(html);
+              if (pageItems.length === 0) break; // Fim das páginas
+              
+              // Evita duplicatas pelo ID
+              const newItems = pageItems.filter((pi: any) => !allItems.some((ai: any) => ai.id === pi.id));
+              if (newItems.length === 0) break;
+              
+              allItems = [...allItems, ...newItems];
+              console.log(`Página ${page} processada. Total acumulado: ${allItems.length}`);
+            } catch (e) {
+              console.warn(`Erro ao processar página ${page}, encerrando busca.`, e);
+              break;
+            }
+          } else {
+            break;
           }
         }
-
-        if (!html) throw new Error('Falha ao acessar lista via proxy. Por favor, use o "Modo Manual (Código)" abaixo.');
-        items = processVitrineHtml(html);
+        items = allItems;
       }
 
       if (items.length === 0) throw new Error('Nenhum produto encontrado no código fornecido.');
