@@ -25,18 +25,25 @@ export async function POST(request: Request) {
     console.log('[Sync] Iniciando busca na API do ML...');
     let url = `https://vitrine.mercadolivre.com.br/api/infinit-scroll-vitrine-products?matt_tool=${MATT_TOOL}&matt_word=${MATT_WORD}&offset=0&limit=50`;
     
+    // Tenta fetch com headers mais genéricos para evitar bot blocks
     const response = await fetch(url, {
+      method: 'GET',
       headers: {
-        'Accept': 'application/json',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      }
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
+        'Referer': 'https://vitrine.mercadolivre.com.br/',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+      },
+      next: { revalidate: 0 } // Desabilitar cache do Next.js
     }).catch(err => {
-        throw new Error(`Falha de rede ao acessar API do ML: ${err.message}`);
+        throw new Error(`Falha de rede (fetch failed) ao acessar ML: ${err.message}. Isso pode ser um bloqueio de IP do Netlify.`);
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Erro API ML (Status ${response.status}): ${errorText.substring(0, 100)}`);
+      throw new Error(`Erro API ML (Status ${response.status}): ${errorText.substring(0, 50)}...`);
     }
 
     const data = await response.json();
@@ -47,14 +54,14 @@ export async function POST(request: Request) {
     }
 
     // 2. Prepara produtos para salvar no Firestore
-    console.log('[Sync] Acessando Firestore para verificar duplicatas...');
+    // Nota: db inicializará vazio se não houver configs, mas chamará o erro abaixo
     let existingMlbIds = new Set();
     try {
         const produtosCol = collection(db, 'produtos');
         const snapshot = await getDocs(produtosCol);
         existingMlbIds = new Set(snapshot.docs.map(doc => doc.data().mlb_id));
     } catch (dbErr: any) {
-        throw new Error(`Erro ao conectar com Firebase/Firestore: ${dbErr.message}. Verifique se as variáveis de ambiente (API Key, Project ID, etc) estão configuradas corretamente no Netlify.`);
+        throw new Error(`Conexão Firebase Falhou: ${dbErr.message}. IMPORTANTE: Verifique se as variáveis de ambiente (API_KEY, etc) foram adicionadas ao Netlify.`);
     }
 
     const novosProdutos = items

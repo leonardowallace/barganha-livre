@@ -60,12 +60,34 @@ export default function AdminPage() {
     }
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    fetchProdutos(password).then(() => {
-        // Simple check: if fetch was successful (or we just allow it for now as a basic guard)
+    setLoading(true);
+    try {
+      const res = await fetch('/api/admin/produtos', {
+        headers: { 'Authorization': `Bearer ${password}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        data.sort((a: any, b: any) => new Date(b.data_adicionado).getTime() - new Date(a.data_adicionado).getTime());
+        setProdutos(data);
         setAuthed(true);
-    });
+      } else {
+        alert('Senha incorreta.');
+        setPassword('');
+      }
+    } catch (error) {
+      alert('Erro ao validar acesso.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    setAuthed(false);
+    setPassword('');
+    setUrl('');
+    setMsg({ text: '', type: '' });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -135,6 +157,7 @@ export default function AdminPage() {
             placeholder="Senha de acesso"
             required
             autoFocus
+            autoComplete="off"
           />
           
           <button 
@@ -156,7 +179,7 @@ export default function AdminPage() {
           <p className="text-sm text-gray-500 dark:text-gray-400 font-medium uppercase tracking-widest mt-1">Gerenciamento de Vitrine</p>
         </div>
         <button 
-          onClick={() => { setAuthed(false); setPassword(''); }} 
+          onClick={handleLogout} 
           className="bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 px-4 py-2 rounded-lg text-sm font-bold transition-colors border border-transparent hover:border-red-100 dark:hover:border-red-900/30"
         >
           Encerrar Sessão
