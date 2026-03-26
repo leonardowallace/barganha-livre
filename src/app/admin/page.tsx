@@ -250,18 +250,29 @@ export default function AdminPage() {
     setMsg({ text: 'Extraindo dados do produto...', type: 'info' });
 
     try {
+      console.log('[PIPELINE-FRONT] Início Adição Manual:', url);
       let extractedData = null;
 
-      // 1. Tenta extrair dados via Cliente (evita bloqueio no servidor)
       // 1. Tenta extrair dados via Proxy Interno (mais estável)
       try {
         const proxyUrl = `/api/admin/proxy?url=${encodeURIComponent(url)}`;
+        console.log('[PIPELINE-FRONT] Chamando Proxy:', proxyUrl);
         const resProxy = await fetch(proxyUrl);
+        
         if (resProxy.ok) {
           const html = await resProxy.text();
-          const titleMatch = html.match(/<meta\s+(?:property|name)="og:title"\s+content="([^"]+)"/i);
-          const imageMatch = html.match(/<meta\s+(?:property|name)="og:image"\s+content="([^"]+)"/i);
-          const priceMatch = html.match(/<meta\s+itemprop="price"\s+content="([^"]+)"/i) || html.match(/"price":\s*(\d+(?:\.\d+)?)/i);
+          console.log('[PIPELINE-FRONT] HTML recebido (tamanho):', html.length);
+          
+          const titleMatch = html.match(/property=["']og:title["']\s+content=["']([^"']+)["']/i) || 
+                             html.match(/content=["']([^"']+)["']\s+property=["']og:title["']/i) ||
+                             html.match(/<meta\s+(?:property|name)="og:title"\s+content="([^"]+)"/i);
+                             
+          const imageMatch = html.match(/property=["']og:image["']\s+content=["']([^"']+)["']/i) || 
+                             html.match(/content=["']([^"']+)["']\s+property=["']og:image["']/i) ||
+                             html.match(/<meta\s+(?:property|name)="og:image"\s+content="([^"]+)"/i);
+                             
+          const priceMatch = html.match(/itemprop=["']price["']\s+content=["']([^"']+)["']/i) || 
+                             html.match(/"price":\s*(\d+(?:\.\d+)?)/i);
           
           if (titleMatch && imageMatch) {
             extractedData = {
@@ -269,12 +280,14 @@ export default function AdminPage() {
               image: imageMatch[1].replace('-W.', '-O.'),
               price: priceMatch ? parseFloat(priceMatch[1]) : 0
             };
+            console.log('[PIPELINE-FRONT] Dados Extraídos:', extractedData);
           }
         }
       } catch (e) {
-        console.warn('Erro na extração via proxy interno:', e);
+        console.warn('[PIPELINE-FRONT] Erro na extração via proxy interno:', e);
       }
 
+      console.log('[PIPELINE-FRONT] Enviando para API /admin/produtos...');
       const res = await fetch('/api/admin/produtos', {
         method: 'POST',
         headers: { 
@@ -284,7 +297,7 @@ export default function AdminPage() {
         body: JSON.stringify({ 
           url, 
           categoria,
-          ...(extractedData || {}) // Envia os dados extraídos se existirem
+          ...(extractedData || {}) 
         }),
       });
 

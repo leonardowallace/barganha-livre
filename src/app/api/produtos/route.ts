@@ -32,14 +32,17 @@ export async function GET(request: Request) {
     }
 
     const snapshot = await getDocs(q);
+    console.log(`[PIPELINE] GET: Encontrados ${snapshot.size} produtos.`);
     
     const produtos = snapshot.docs.map(docSnap => {
       const data = docSnap.data();
-      // Gerar link de afiliado (exemplo simplificado conforme regras do projeto)
-      // Todo link deve ter tracking. Aqui convertemos o permalink.
-      const affiliate_url = data.permalink.includes('?') 
-        ? `${data.permalink}&matt_tool=55704581&matt_word=rodriguesleonardo2022060705062`
-        : `${data.permalink}?matt_tool=55704581&matt_word=rodriguesleonardo2022060705062`;
+      const originalPermalink = data.permalink || '';
+      
+      const affiliate_url = originalPermalink.includes('?') 
+        ? `${originalPermalink}&matt_tool=55704581&matt_word=rodriguesleonardo2022060705062`
+        : `${originalPermalink}?matt_tool=55704581&matt_word=rodriguesleonardo2022060705062`;
+
+      console.log(`[PIPELINE] Conversão: ${data.mlb_id} -> ${affiliate_url}`);
 
       return {
         id: docSnap.id,
