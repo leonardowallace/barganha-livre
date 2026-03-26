@@ -35,16 +35,32 @@ export default function AdminPage() {
   };
 
   const processVitrineHtml = (html: string) => {
-    const marker = '_n.ctx.r=';
-    const markerIdx = html.indexOf(marker);
-    if (markerIdx === -1) throw new Error('Estrutura de dados não encontrada. Verifique se copiou o código correto.');
+    console.log('Iniciando processamento de HTML...', html.length);
+    
+    // Tenta primeiro o padrão _n.ctx.r (mais comum em vitrines)
+    let marker = '_n.ctx.r=';
+    let markerIdx = html.indexOf(marker);
+    
+    // Se não achar, tenta window.__PRELOADED_STATE__ (comum em listagens)
+    if (markerIdx === -1) {
+      marker = 'window.__PRELOADED_STATE__ = ';
+      markerIdx = html.indexOf(marker);
+    }
+
+    if (markerIdx === -1) {
+      console.warn('Nenhum marcador de dados padrão encontrado.');
+      // Tenta um buscador genérico de JSON grande (emergência)
+      const matches = html.match(/{[^{]?"polycards":[ \t]*\[/g);
+      if (!matches) throw new Error('Estrutura de dados não encontrada. Verifique se copiou o código correto da vitrine.');
+      markerIdx = html.indexOf(matches[0]);
+      marker = ''; // O match já inclui o início do objeto
+    }
 
     const startIdx = markerIdx + marker.length;
     let depth = 0;
     let endIdx = -1;
     let foundStart = false;
 
-    // Busca equilibrada de chaves para extrair o JSON do objeto global do ML
     for (let i = startIdx; i < html.length; i++) {
         if (html[i] === '{') { depth++; foundStart = true; }
         else if (html[i] === '}') {
@@ -53,24 +69,40 @@ export default function AdminPage() {
         }
     }
 
-    if (endIdx === -1) throw new Error('Erro ao delimitar dados. Tente copiar novamente.');
+    if (endIdx === -1) throw new Error('Erro ao delimitar dados. Tente copiar novamente o código-fonte.');
 
     const jsonStr = html.substring(startIdx, endIdx + 1);
     const data = JSON.parse(jsonStr);
-    const polycards = data.appProps?.pageProps?.polycards || [];
     
+    // Tenta encontrar a lista de produtos em diferentes níveis da árvore
+    const polycards = 
+      data.appProps?.pageProps?.polycards || 
+      data.polycards || 
+      data.results || 
+      [];
+    
+    console.log('Polycards encontrados:', polycards.length);
+
     return polycards.map((p: any) => {
-      const titleComp = p.components?.find((c: any) => c.type === 'title');
-      const priceComp = p.components?.find((c: any) => c.type === 'price');
-      const id = p.pictures?.pictures?.[0]?.id || p.metadata?.id || p.unique_id;
-      return {
-        id: id,
-        title: titleComp?.title?.text || 'Produto',
-        price: priceComp?.price?.current_price?.value || 0,
-        image: id ? `https://http2.mlstatic.com/D_NQ_NP_${id}-O.webp` : '',
-        permalink: p.metadata?.url + (p.metadata?.url_params || '') + (p.metadata?.url_fragments || '')
-      };
-    });
+      try {
+        const components = p.components || [];
+        const titleComp = components.find((c: any) => c.type === 'title');
+        const priceComp = components.find((c: any) => c.type === 'price');
+        const id = p.pictures?.pictures?.[0]?.id || p.metadata?.id || p.unique_id || p.id;
+        
+        if (!id) return null;
+
+        return {
+          id: id,
+          title: titleComp?.title?.text || p.title || 'Produto Mercado Livre',
+          price: priceComp?.price?.current_price?.value || p.price || 0,
+          image: id ? (id.startsWith('http') ? id : `https://http2.mlstatic.com/D_NQ_NP_${id}-O.webp`) : '',
+          permalink: (p.metadata?.url || p.permalink || '') + (p.metadata?.url_params || '') + (p.metadata?.url_fragments || '')
+        };
+      } catch (e) {
+        return null;
+      }
+    }).filter((p: any) => p && p.id);
   };
 
   const handleSyncVitrine = async () => {
@@ -154,16 +186,45 @@ export default function AdminPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setMsg({ text: '', type: '' });
+    setMsg({ text: 'Extraindo dados do produto...', type: 'info' });
 
     try {
+      let extractedData = null;
+
+      // 1. Tenta extrair dados via Cliente (evita bloqueio no servidor)
+      try {
+        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+        const resProxy = await fetch(proxyUrl);
+        if (resProxy.ok) {
+          const proxyData = await resProxy.json();
+          const html = proxyData.contents;
+          const titleMatch = html.match(/<meta\s+(?:property|name)="og:title"\s+content="([^"]+)"/i);
+          const imageMatch = html.match(/<meta\s+(?:property|name)="og:image"\s+content="([^"]+)"/i);
+          const priceMatch = html.match(/<meta\s+itemprop="price"\s+content="([^"]+)"/i) || html.match(/"price":\s*(\d+(?:\.\d+)?)/i);
+          
+          if (titleMatch && imageMatch) {
+            extractedData = {
+              title: titleMatch[1].replace(/\s*\|\s*Mercado\s*Livre\s*/i, '').trim(),
+              image: imageMatch[1].replace('-W.', '-O.'),
+              price: priceMatch ? parseFloat(priceMatch[1]) : 0
+            };
+          }
+        }
+      } catch (e) {
+        console.warn('Erro na extração via cliente, tentando servidor...', e);
+      }
+
       const res = await fetch('/api/admin/produtos', {
         method: 'POST',
         headers: { 
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${password}`
         },
-        body: JSON.stringify({ url, categoria }),
+        body: JSON.stringify({ 
+          url, 
+          categoria,
+          ...(extractedData || {}) // Envia os dados extraídos se existirem
+        }),
       });
 
       const data = await res.json();

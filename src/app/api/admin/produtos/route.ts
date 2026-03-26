@@ -48,7 +48,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    let { url, categoria } = body;
+    let { url, categoria, title: providedTitle, price: providedPrice, image: providedImage } = body;
 
     if (!url || !categoria) {
       return NextResponse.json({ error: 'URL e categoria são obrigatórios' }, { status: 400 });
@@ -56,34 +56,36 @@ export async function POST(request: Request) {
 
     url = url.split('#')[0];
 
-    let title = '';
-    let price = 0;
-    let image = '';
+    let title = providedTitle || '';
+    let price = providedPrice || 0;
+    let image = providedImage || '';
     
-    // Web Scraping
-    try {
-      const pageRes = await fetch(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
-          'Accept-Language': 'pt-BR,pt;q=0.9'
-        }
-      });
-      const html = await pageRes.text();
-      const titleMatch = html.match(/<meta\s+(?:property|name)="og:title"\s+content="([^"]+)"/i);
-      const imageMatch = html.match(/<meta\s+(?:property|name)="og:image"\s+content="([^"]+)"/i);
-      const priceMatch1 = html.match(/<meta\s+itemprop="price"\s+content="([^"]+)"/i);
-      const priceMatch2 = html.match(/"price":\s*(\d+(?:\.\d+)?)/i); 
-      
-      if (titleMatch) title = titleMatch[1].replace(/\s*\|\s*Mercado\s*Livre\s*/i, '').trim();
-      if (imageMatch) image = imageMatch[1];
-      if (priceMatch1) price = parseFloat(priceMatch1[1]);
-      else if (priceMatch2) price = parseFloat(priceMatch2[1]);
-    } catch (e) {
-      console.error('Scraping error:', e);
+    // Web Scraping fallback se não vier do cliente
+    if (!title || !image) {
+      try {
+        const pageRes = await fetch(url, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+            'Accept-Language': 'pt-BR,pt;q=0.9'
+          }
+        });
+        const html = await pageRes.text();
+        const titleMatch = html.match(/<meta\s+(?:property|name)="og:title"\s+content="([^"]+)"/i);
+        const imageMatch = html.match(/<meta\s+(?:property|name)="og:image"\s+content="([^"]+)"/i);
+        const priceMatch1 = html.match(/<meta\s+itemprop="price"\s+content="([^"]+)"/i);
+        const priceMatch2 = html.match(/"price":\s*(\d+(?:\.\d+)?)/i); 
+        
+        if (titleMatch) title = titleMatch[1].replace(/\s*\|\s*Mercado\s*Livre\s*/i, '').trim();
+        if (imageMatch) image = imageMatch[1];
+        if (priceMatch1) price = parseFloat(priceMatch1[1]);
+        else if (priceMatch2) price = parseFloat(priceMatch2[1]);
+      } catch (e) {
+        console.error('Scraping error:', e);
+      }
     }
 
     if (!title || !image) {
-      return NextResponse.json({ error: 'Não foi possível extrair os dados. Verifique a URL.' }, { status: 400 });
+      return NextResponse.json({ error: 'Não foi possível extrair os dados. O servidor do Mercado Livre bloqueou o acesso. Tente novamente em instantes.' }, { status: 400 });
     }
 
     const mlbId = url.match(/MLB[-]?\d+/i)?.[0].replace('-','').toUpperCase() || Math.random().toString(36).substr(2, 9);

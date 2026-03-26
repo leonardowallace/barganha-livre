@@ -4,7 +4,6 @@ import AdBanner from '@/components/AdBanner';
 export default function Home() {
   return (
     <div className="pt-6 sm:pt-10">
-// ... (hero section remains same)
       <div className="bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-800 rounded-3xl shadow-xl p-8 sm:p-14 mb-10 mx-4 sm:mx-0 text-white text-center relative overflow-hidden">
         {/* Decorative background elements */}
         <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 rounded-full bg-white opacity-10 blur-3xl"></div>
