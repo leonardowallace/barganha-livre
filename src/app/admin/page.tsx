@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { db } from '@/lib/firebase';
+import { collection, query, orderBy, getDocs, deleteDoc, doc, setDoc } from 'firebase/firestore';
 
 const categorias = ['eletronicos', 'casa', 'moda', 'saude', 'estudos', 'esportes', 'beleza', 'automotivo'];
 
@@ -173,6 +175,7 @@ export default function AdminPage() {
         let savedCount = 0;
         for (const item of items) {
           try {
+            // Tentativa via API Individual
             const resSingle = await fetch('/api/admin/produtos', {
               method: 'POST',
               headers: { 
@@ -187,18 +190,37 @@ export default function AdminPage() {
                 image: item.image
               }),
             });
-            if (resSingle.ok) savedCount++;
+            
+            if (resSingle.ok) {
+                savedCount++;
+            } else {
+                // FALLBACK SUPREMO: Gravação Direta via Cliente (Bypassa o 502 do Netlify)
+                console.warn('API falhou, usando gravação direta para:', item.id);
+                const safeId = String(item.id).split('/').pop()?.replace(/[^a-zA-Z0-9_-]/g, '') || Math.random().toString(36).substr(2, 9);
+                const docRef = doc(db, 'produtos', safeId);
+                await setDoc(docRef, {
+                    mlb_id: safeId,
+                    title: item.title || 'Produto sem título',
+                    price: Number(item.price) || 0,
+                    image: item.image || '',
+                    permalink: item.permalink || '',
+                    categoria: 'ofertas',
+                    score: 100,
+                    data_atualizacao: new Date().toISOString()
+                }, { merge: true });
+                savedCount++;
+            }
           } catch (e) {
-            console.error('Erro ao salvar item individual:', e);
+            console.error('Erro ao salvar item no modo atômico:', e);
           }
         }
         
         if (savedCount > 0) {
-          setMsg({ text: `${savedCount} produtos sincronizados individualmente.`, type: 'success' });
+          setMsg({ text: `${savedCount} produtos sincronizados (Modo Direto).`, type: 'success' });
           setManualHtml('');
           fetchProdutos(password);
         } else {
-          throw new Error('Falha total na sincronização. Verifique sua conexão e tente novamente.');
+          throw new Error('Falha total na sincronização. Verifique os logs e tente novamente.');
         }
       }
     } catch (error: any) {
