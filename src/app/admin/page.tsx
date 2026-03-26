@@ -34,52 +34,27 @@ export default function AdminPage() {
 
   const handleSyncVitrine = async () => {
     setLoadingSync(true);
-    setMsg({ text: 'Sincronizando com sua vitrine do Mercado Livre via navegador...', type: 'info' });
+    setMsg({ text: 'Sincronizando com sua vitrine do Mercado Livre... Aguarde.', type: 'info' });
     
     try {
-      const MATT_TOOL = '55704581';
-      const MATT_WORD = 'rodriguesleonardo2022060705062';
-      const urlML = `https://vitrine.mercadolivre.com.br/api/infinit-scroll-vitrine-products?matt_tool=${MATT_TOOL}&matt_word=${MATT_WORD}&offset=0&limit=50`;
-
-      // 1. Busca direta no Cliente (Usa o IP do usuário para evitar bloqueio do Netlify)
-      const mlRes = await fetch(urlML, {
-        method: 'GET',
-        headers: { 'Accept': 'application/json' }
-      });
-
-      if (!mlRes.ok) {
-        throw new Error(`Erro na busca direta: ${mlRes.status}. O Mercado Livre pode estar bloqueando a requisição.`);
-      }
-
-      const dataML = await mlRes.json();
-      const items = dataML.results || [];
-
-      if (items.length === 0) {
-        setMsg({ text: 'Nenhum item encontrado na sua vitrine.', type: 'info' });
-        return;
-      }
-
-      // 2. Envia para o servidor apenas para salvar no Firestore
-      const saveRes = await fetch('/api/admin/sync-vitrine', {
+      const res = await fetch('/api/admin/sync-vitrine', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${password}`
-        },
-        body: JSON.stringify({ items })
+        }
       });
       
-      const saveResult = await saveRes.json();
+      const data = await res.json();
       
-      if (saveResult.success) {
-        setMsg({ text: saveResult.message, type: 'success' });
+      if (data.success) {
+        setMsg({ text: data.message, type: 'success' });
         fetchProdutos(password);
       } else {
-        setMsg({ text: 'Erro ao salvar no banco: ' + (saveResult.error || 'Erro desconhecido'), type: 'error' });
+        setMsg({ text: 'Erro na sincronização: ' + (data.error || 'Erro desconhecido'), type: 'error' });
       }
-    } catch (error: any) {
-      setMsg({ text: 'Erro na sincronização: ' + (error.message || 'Falha de comunicação'), type: 'error' });
-      console.error('Sincronização falhou:', error);
+    } catch (error) {
+      setMsg({ text: 'Falha na comunicação com o servidor.', type: 'error' });
     } finally {
       setLoadingSync(false);
     }
