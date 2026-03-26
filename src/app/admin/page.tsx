@@ -121,20 +121,29 @@ export default function AdminPage() {
         const urlVitrine = 'https://www.mercadolivre.com.br/social/rodriguesleonardo2022060705062/lists/765f49c4-4f0c-4da3-9d46-e3ffe7e32ce2?matt_tool=55704581&forceInApp=true';
         
         let html = '';
-        // Tenta proxies em cascata para máxima resiliência
         const proxies = [
-          (u: string) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`,
-          (u: string) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
-          (u: string) => `https://thingproxy.freeboard.io/fetch/${u}`
+          { fn: (u: string) => `/api/admin/proxy?url=${encodeURIComponent(u)}`, type: 'text' },
+          { fn: (u: string) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`, type: 'json' },
+          { fn: (u: string) => `https://corsproxy.io/?${encodeURIComponent(u)}`, type: 'text' },
+          { fn: (u: string) => `https://thingproxy.freeboard.io/fetch/${u}`, type: 'text' }
         ];
 
-        for (const getProxy of proxies) {
+        for (const proxy of proxies) {
           try {
-            const res = await fetch(getProxy(urlVitrine));
+            console.log('Tentando proxy:', proxy.fn(urlVitrine));
+            const res = await fetch(proxy.fn(urlVitrine));
             if (res.ok) {
-              const data = await res.json();
-              html = data.contents || data; // AllOrigins usa .contents, outros mandam direto
-              if (html && html.length > 1000) break;
+              if (proxy.type === 'json') {
+                const data = await res.json();
+                html = data.contents || data;
+              } else {
+                html = await res.text();
+              }
+              
+              if (html && html.length > 1000) {
+                console.log('HTML obtido com sucesso via proxy');
+                break;
+              }
             }
           } catch (e) {
             console.warn('Proxy falhou, tentando próximo...', e);
