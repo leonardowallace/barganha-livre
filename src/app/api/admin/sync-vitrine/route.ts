@@ -22,8 +22,9 @@ export async function POST(request: Request) {
 
     // 2. Se não vierem itens, tenta buscar no Servidor (Server-Side Sync principal)
     if (items.length === 0) {
-      console.log('[Sync] Buscando dados diretamente no link SEC do ML...');
-      const url = 'https://mercadolivre.com/sec/1Nsn5dh';
+      console.log('[Sync] Buscando dados diretamente no link da Vitrine ML...');
+      // Link direto fornecido pelo usuário
+      const url = 'https://www.mercadolivre.com.br/social/rodriguesleonardo2022060705062/lists/765f49c4-4f0c-4da3-9d46-e3ffe7e32ce2?matt_tool=55704581&forceInApp=true';
       
       const response = await fetch(url, {
         headers: { 
@@ -32,49 +33,40 @@ export async function POST(request: Request) {
         },
         redirect: 'follow'
       }).catch(err => {
-          throw new Error(`Falha de rede servidor: ${err.message}. Tente sincronizar novamente (o Cliente agora fará o fallback automaticamente).`);
+          throw new Error(`Falha de rede servidor: ${err.message}.`);
       });
 
       if (!response.ok) throw new Error(`ML retornou status ${response.status}`);
 
       const html = await response.text();
-      const marker = '"polycards":';
+      const marker = '_n.ctx.r=';
       const markerIdx = html.indexOf(marker);
       
-      if (markerIdx === -1) throw new Error('Dados de vitrine não encontrados na página (Marcador ausente).');
+      if (markerIdx === -1) throw new Error('Estrutura de dados da vitrine não encontrada (_n.ctx.r ausente).');
 
-      const startBracketIdx = html.indexOf('[', markerIdx);
-      let depth = 0;
-      let endBracketIdx = -1;
-      for (let i = startBracketIdx; i < html.length; i++) {
-        if (html[i] === '[') depth++;
-        else if (html[i] === ']') {
-          depth--;
-          if (depth === 0) {
-            endBracketIdx = i;
-            break;
-          }
-        }
-      }
+      const startIdx = markerIdx + marker.length;
+      const endIdx = html.indexOf('};', startIdx);
+      if (endIdx === -1) throw new Error('Falha ao delimitar dados da vitrine.');
 
-      if (endBracketIdx !== -1) {
-        const rawArray = html.substring(startBracketIdx, endBracketIdx + 1);
-        const polycards = JSON.parse(rawArray);
+      const jsonStr = html.substring(startIdx, endIdx + 1);
+      const data = JSON.parse(jsonStr);
+      
+      // Acessa polycards: window._n.ctx.r.appProps.pageProps.polycards
+      const polycards = data.appProps?.pageProps?.polycards || [];
+      
+      items = polycards.map((p: any) => {
+        const titleComp = p.components?.find((c: any) => c.type === 'title');
+        const priceComp = p.components?.find((c: any) => c.type === 'price');
+        const id = p.pictures?.pictures?.[0]?.id || p.metadata?.id || p.unique_id;
         
-        // Mapeia para o formato interno do X Promo
-        items = polycards.map((p: any) => {
-          const titleComp = p.components?.find((c: any) => c.type === 'title');
-          const priceComp = p.components?.find((c: any) => c.type === 'price');
-          
-          return {
-            id: p.metadata?.id || p.unique_id,
-            title: titleComp?.title?.text || 'Produto sem título',
-            price: priceComp?.price?.current_price?.value || 0,
-            image: (p.pictures?.[0] || '').replace('-I.', '-O.').replace('-W.', '-O.'),
-            permalink: p.metadata?.url || 'https://www.mercadolivre.com.br'
-          };
-        });
-      }
+        return {
+          id: id,
+          title: titleComp?.title?.text || 'Produto',
+          price: priceComp?.price?.current_price?.value || 0,
+          image: id ? `https://http2.mlstatic.com/D_NQ_NP_${id}-O.webp` : '',
+          permalink: p.metadata?.url + (p.metadata?.url_params || '') + (p.metadata?.url_fragments || '')
+        };
+      });
     }
 
     if (items.length === 0) {

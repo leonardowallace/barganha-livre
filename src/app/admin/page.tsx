@@ -34,60 +34,16 @@ export default function AdminPage() {
 
   const handleSyncVitrine = async () => {
     setLoadingSync(true);
-    setMsg({ text: 'Sincronizando com sua vitrine do Mercado Livre via navegador...', type: 'info' });
+    setMsg({ text: 'Sincronizando com sua vitrine do Mercado Livre... Aguarde.', type: 'info' });
     
     try {
-      const urlSEC = 'https://mercadolivre.com/sec/1Nsn5dh';
-      
-      // 1. Busca HTML via Navegador (Bypass Timeout do Servidor e Bloqueio de IP)
-      // Nota: Fetch direto pode dar CORS, então usamos um truque se necessário, 
-      // mas vamos tentar o fetch normal primeiro com o link SEC.
-      const resML = await fetch(urlSEC, { redirect: 'follow' });
-      const html = await resML.text();
-      
-      const marker = '"polycards":';
-      const markerIdx = html.indexOf(marker);
-      if (markerIdx === -1) throw new Error('Dados de vitrine não encontrados na página.');
-
-      const startBracketIdx = html.indexOf('[', markerIdx);
-      let depth = 0;
-      let endBracketIdx = -1;
-      for (let i = startBracketIdx; i < html.length; i++) {
-        if (html[i] === '[') depth++;
-        else if (html[i] === ']') {
-          depth--;
-          if (depth === 0) {
-            endBracketIdx = i;
-            break;
-          }
-        }
-      }
-
-      if (endBracketIdx === -1) throw new Error('Falha ao processar lista de produtos.');
-
-      const rawArray = html.substring(startBracketIdx, endBracketIdx + 1);
-      const polycards = JSON.parse(rawArray);
-      
-      const items = polycards.map((p: any) => {
-        const titleComp = p.components?.find((c: any) => c.type === 'title');
-        const priceComp = p.components?.find((c: any) => c.type === 'price');
-        return {
-          id: p.metadata?.id || p.unique_id,
-          title: titleComp?.title?.text || 'Produto',
-          price: priceComp?.price?.current_price?.value || 0,
-          image: (p.pictures?.[0] || '').replace('-I.', '-O.').replace('-W.', '-O.'),
-          permalink: p.metadata?.url || ''
-        };
-      });
-
-      // 2. Envia para o servidor apenas para salvar no Firestore
       const res = await fetch('/api/admin/sync-vitrine', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${password}`
         },
-        body: JSON.stringify({ items })
+        body: JSON.stringify({ }) // Vazio para disparar sync automático
       });
       
       const data = await res.json();
@@ -96,10 +52,10 @@ export default function AdminPage() {
         setMsg({ text: data.message, type: 'success' });
         fetchProdutos(password);
       } else {
-        setMsg({ text: 'Erro ao salvar: ' + (data.error || 'Erro desconhecido'), type: 'error' });
+        setMsg({ text: 'Erro na sincronização: ' + (data.error || 'Erro desconhecido'), type: 'error' });
       }
-    } catch (error: any) {
-      setMsg({ text: 'Falha na sincronização: ' + (error.message || 'Erro de rede'), type: 'error' });
+    } catch (error) {
+      setMsg({ text: 'Falha na comunicação com o servidor.', type: 'error' });
     } finally {
       setLoadingSync(false);
     }
