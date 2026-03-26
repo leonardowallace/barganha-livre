@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/firebase';
-import { collection, getDocs, addDoc, query, where, writeBatch, doc } from 'firebase/firestore';
+import { collection, getDocs, doc, writeBatch } from 'firebase/firestore';
 
 function verifyAuth(request: Request) {
   const authHeader = request.headers.get('authorization');
@@ -22,15 +22,21 @@ export async function POST(request: Request) {
     const MATT_WORD = process.env.MATT_WORD || 'rodriguesleonardo2022060705062';
     
     // 1. Busca dados da vitrine social
-    const response = await fetch(`https://vitrine.mercadolivre.com.br/api/infinit-scroll-vitrine-products?matt_tool=${MATT_TOOL}&matt_word=${MATT_WORD}&offset=0&limit=50`, {
+    console.log('[Sync] Iniciando busca na API do ML...');
+    let url = `https://vitrine.mercadolivre.com.br/api/infinit-scroll-vitrine-products?matt_tool=${MATT_TOOL}&matt_word=${MATT_WORD}&offset=0&limit=50`;
+    
+    const response = await fetch(url, {
       headers: {
         'Accept': 'application/json',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       }
+    }).catch(err => {
+        throw new Error(`Falha de rede ao acessar API do ML: ${err.message}`);
     });
 
     if (!response.ok) {
-      throw new Error(`Erro API ML: ${response.status}`);
+      const errorText = await response.text();
+      throw new Error(`Erro API ML (Status ${response.status}): ${errorText.substring(0, 100)}`);
     }
 
     const data = await response.json();
@@ -40,10 +46,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: 'Nenhum produto encontrado na vitrine social.' });
     }
 
-    // 2. Prepara produtos para salvar
-    const produtosCol = collection(db, 'produtos');
-    const snapshot = await getDocs(produtosCol);
-    const existingMlbIds = new Set(snapshot.docs.map(doc => doc.data().mlb_id));
+    // 2. Prepara produtos para salvar no Firestore
+    console.log('[Sync] Acessando Firestore para verificar duplicatas...');
+    let existingMlbIds = new Set();
+    try {
+        const produtosCol = collection(db, 'produtos');
+        const snapshot = await getDocs(produtosCol);
+        existingMlbIds = new Set(snapshot.docs.map(doc => doc.data().mlb_id));
+    } catch (dbErr: any) {
+        throw new Error(`Erro ao conectar com Firebase/Firestore: ${dbErr.message}. Verifique se as variáveis de ambiente (API Key, Project ID, etc) estão configuradas corretamente no Netlify.`);
+    }
 
     const novosProdutos = items
       .filter((item: any) => !existingMlbIds.has(item.id))
@@ -53,7 +65,7 @@ export async function POST(request: Request) {
         price: item.price,
         image: item.thumbnail.replace('-I.', '-O.'),
         permalink: item.permalink,
-        categoria: 'Eletrônicos', // Default category
+        categoria: 'Eletrônicos',
         score: item.health || 100,
         data_adicionado: new Date().toISOString()
       }));
@@ -66,10 +78,11 @@ export async function POST(request: Request) {
       });
     }
 
-    // 3. Salva no Firestore (usando batch para eficiência)
+    // 3. Salva no Firestore
     const batch = writeBatch(db);
+    const produtosColRef = collection(db, 'produtos');
     novosProdutos.forEach((prod: any) => {
-      const newDocRef = doc(produtosCol);
+      const newDocRef = doc(produtosColRef);
       batch.set(newDocRef, prod);
     });
     
@@ -82,7 +95,7 @@ export async function POST(request: Request) {
     });
 
   } catch (error: any) {
-    console.error('Sync error:', error);
-    return NextResponse.json({ error: error.message || 'Erro ao sincronizar' }, { status: 500 });
+    console.error('Sync error detailing:', error);
+    return NextResponse.json({ error: error.message || 'Erro desconhecido na sincronização' }, { status: 500 });
   }
 }
