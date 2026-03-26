@@ -1,68 +1,60 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
-
-const DB_PATH = path.join(process.cwd(), 'data', 'produtos.json');
+import { db } from '@/lib/firebase';
+import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
 
 export interface ProdutoAfiliado {
   id: string;
+  mlb_id: string;
   title: string;
   price: number;
   image: string;
   affiliate_url: string;
-  score: number;
-}
-
-function gerarLinkAfiliado(url: string): string {
-  const MATT_TOOL = process.env.MATT_TOOL || '55704581';
-  const MATT_WORD = process.env.MATT_WORD || 'rodriguesleonardo2022060705062';
-
-  if (url.includes('matt_tool=')) {
-    return url;
-  }
-
-  const separador = url.includes('?') ? '&' : '?';
-  return `${url}${separador}matt_tool=${MATT_TOOL}&matt_word=${MATT_WORD}`;
+  categoria: string;
 }
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const categoria = searchParams.get('categoria');
-
-  if (!categoria) {
-    return NextResponse.json({ error: 'Parâmetro categoria é obrigatório' }, { status: 400 });
-  }
-
   try {
-    if (!fs.existsSync(DB_PATH)) {
-      return NextResponse.json([]);
-    }
+    const { searchParams } = new URL(request.url);
+    const categoria = searchParams.get('categoria');
 
-    const data = fs.readFileSync(DB_PATH, 'utf8');
-    const todosProdutos = JSON.parse(data);
-
-    let produtosFiltrados = todosProdutos;
+    const produtosCol = collection(db, 'produtos');
     
-    if (categoria !== 'ofertas') {
-      produtosFiltrados = todosProdutos.filter((p: any) => p.categoria.toLowerCase() === categoria.toLowerCase());
+    let q;
+    if (categoria && categoria !== 'ofertas') {
+      q = query(
+        produtosCol, 
+        where('categoria', '==', categoria),
+        orderBy('data_adicionado', 'desc')
+      );
+    } else {
+      // Para "ofertas" ou sem categoria, mostramos os mais recentes de todos
+      q = query(produtosCol, orderBy('data_adicionado', 'desc'));
     }
 
-    const produtosResponse: ProdutoAfiliado[] = produtosFiltrados.map((item: any) => ({
-      id: item.id || Math.random().toString(),
-      title: item.title,
-      price: item.price,
-      image: item.image,
-      affiliate_url: item.permalink ? gerarLinkAfiliado(item.permalink) : '#',
-      score: item.score || 0
-    }));
+    const snapshot = await getDocs(q);
+    
+    const produtos = snapshot.docs.map(docSnap => {
+      const data = docSnap.data();
+      // Gerar link de afiliado (exemplo simplificado conforme regras do projeto)
+      // Todo link deve ter tracking. Aqui convertemos o permalink.
+      const affiliate_url = data.permalink.includes('?') 
+        ? `${data.permalink}&matt_tool=55704581&matt_word=rodriguesleonardo2022060705062`
+        : `${data.permalink}?matt_tool=55704581&matt_word=rodriguesleonardo2022060705062`;
 
-    // Ordenar do mais novo ou maior score
-    produtosResponse.sort((a, b) => b.score - a.score);
+      return {
+        id: docSnap.id,
+        mlb_id: data.mlb_id,
+        title: data.title,
+        price: data.price,
+        image: data.image,
+        affiliate_url: affiliate_url,
+        categoria: data.categoria
+      };
+    });
 
-    return NextResponse.json(produtosResponse);
-
-  } catch (error) {
-    console.error('Erro ao ler DB:', error);
-    return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 });
+    return NextResponse.json(produtos);
+  } catch (error: any) {
+    console.error('Public API Firestore Error:', error);
+    return NextResponse.json([], { status: 200 }); // Retorna vazio em vez de erro para o front
   }
 }

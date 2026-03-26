@@ -1,12 +1,9 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
-import { ProdutoSalvo } from '../admin/produtos/route';
-
-const DB_PATH = path.join(process.cwd(), 'data', 'produtos.json');
+import { db } from '@/lib/firebase';
+import { collection, getDocs, updateDoc, doc } from 'firebase/firestore';
 
 export async function GET(request: Request) {
-  // Rota projetada para ser chamada por um Cron Job (ex: GitHub Actions, cron-job.org, Vercel Cron)
+  // Rota projetada para ser chamada por um Cron Job
   
   // OPCIONAL: Adicione uma verificação de chave secreta para segurança
   const urlParams = new URL(request.url).searchParams;
@@ -17,22 +14,17 @@ export async function GET(request: Request) {
   // }
 
   try {
-    if (!fs.existsSync(DB_PATH)) {
-      return NextResponse.json({ message: 'Nenhum produto cadastrado para atualizar.' });
-    }
-
-    const fileData = fs.readFileSync(DB_PATH, 'utf8');
-    const produtos: ProdutoSalvo[] = JSON.parse(fileData);
+    const produtosCol = collection(db, 'produtos');
+    const snapshot = await getDocs(produtosCol);
     
-    if (produtos.length === 0) {
+    if (snapshot.empty) {
       return NextResponse.json({ message: 'Nenhum produto na base de dados.' });
     }
 
     let updatedCount = 0;
+    const produtos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
 
-    // Fazer a varredura um a um com pequeno delay para não alarmar os bloqueios do Mercado Livre
-    for (let i = 0; i < produtos.length; i++) {
-      const prod = produtos[i];
+    for (const prod of produtos) {
       let novoPreco = prod.price;
 
       try {
@@ -58,20 +50,17 @@ export async function GET(request: Request) {
         }
 
         if (novoPreco > 0 && novoPreco !== prod.price) {
-           produtos[i].price = novoPreco;
+           const docRef = doc(db, 'produtos', prod.id);
+           await updateDoc(docRef, { price: novoPreco });
            updatedCount++;
         }
 
-        // Delay de 1 a 2 segundos entre requests para mitigar bans
-        await new Promise(r => setTimeout(r, 1500));
+        // Delay para mitigar bots / bloqueios
+        await new Promise(r => setTimeout(r, 1000));
 
       } catch (e) {
         console.error(`[Cron] Erro ao atualizar ${prod.id}:`, e);
       }
-    }
-
-    if (updatedCount > 0) {
-        fs.writeFileSync(DB_PATH, JSON.stringify(produtos, null, 2), 'utf8');
     }
 
     return NextResponse.json({ 
