@@ -19,6 +19,18 @@ export default function AdBanner({ slot, format = 'auto', style, className }: Ad
     }
   }, []);
 
+  // Mapeamento de nomes de slot para IDs numéricos do Adsense via Env
+  const getNumericSlot = (name: string) => {
+    switch (name) {
+      case 'sidebar-left': return process.env.NEXT_PUBLIC_ADSENSE_SLOT_SIDEBAR_LEFT;
+      case 'sidebar-right': return process.env.NEXT_PUBLIC_ADSENSE_SLOT_SIDEBAR_RIGHT;
+      case 'home-top-horizontal': return process.env.NEXT_PUBLIC_ADSENSE_SLOT_HORIZONTAL;
+      default: return null;
+    }
+  };
+
+  const adSlot = getNumericSlot(slot) || slot;
+
   return (
     <div className={`overflow-hidden flex justify-center items-center bg-gray-100/50 dark:bg-slate-800/20 rounded-xl border border-dashed border-gray-300 dark:border-slate-700 min-h-[100px] ${className}`}>
       {/* Placeholder visual se não houver anúncios reais carregando */}
@@ -26,7 +38,7 @@ export default function AdBanner({ slot, format = 'auto', style, className }: Ad
         className="adsbygoogle"
         style={style || { display: 'block' }}
         data-ad-client={process.env.NEXT_PUBLIC_ADSENSE_ID || 'ca-pub-0000000000000000'}
-        data-ad-slot={slot}
+        data-ad-slot={adSlot}
         data-ad-format={format}
         data-full-width-responsive="true"
       />
