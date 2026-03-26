@@ -177,52 +177,36 @@ export default function AdminPage() {
         setManualHtml('');
         fetchProdutos(password);
       } else {
-        // FALLBACK: Se o batch falhar (ex: 502 Timeout no Netlify), tenta um a um
-        console.warn('Batch sync falhou, tentando salvamento atômico...', finalData.error);
-        setMsg({ text: 'Salvando produtos um a um (modo de segurança)...', type: 'info' });
+        // FALLBACK: Se o batch falhar, tenta salvar em paralelo direto no Firestore
+        console.warn('Batch sync falhou, iniciando salvamento paralelo direto...');
+        setMsg({ text: `Iniciando salvamento de ${items.length} itens...`, type: 'info' });
         
         let savedCount = 0;
-        for (const item of items) {
+        const savePromises = items.map(async (item: any, index: number) => {
           try {
-            // Tentativa via API Individual
-            const resSingle = await fetch('/api/admin/produtos', {
-              method: 'POST',
-              headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${password}`
-              },
-              body: JSON.stringify({ 
-                url: item.permalink, 
-                categoria: 'ofertas',
-                title: item.title,
-                price: item.price,
-                image: item.image
-              }),
-            });
+            // Gravação Direta via Cliente (Garante velocidade e bypass de 502)
+            const safeId = String(item.id).split('/').pop()?.replace(/[^a-zA-Z0-9_-]/g, '') || Math.random().toString(36).substr(2, 9);
+            const docRef = doc(db, 'produtos', safeId);
             
-            if (resSingle.ok) {
-                savedCount++;
-            } else {
-                // FALLBACK SUPREMO: Gravação Direta via Cliente (Bypassa o 502 do Netlify)
-                console.warn('API falhou, usando gravação direta para:', item.id);
-                const safeId = String(item.id).split('/').pop()?.replace(/[^a-zA-Z0-9_-]/g, '') || Math.random().toString(36).substr(2, 9);
-                const docRef = doc(db, 'produtos', safeId);
-                await setDoc(docRef, {
-                    mlb_id: safeId,
-                    title: item.title || 'Produto sem título',
-                    price: Number(item.price) || 0,
-                    image: item.image || '',
-                    permalink: item.permalink || '',
-                    categoria: 'ofertas',
-                    score: 100,
-                    data_atualizacao: new Date().toISOString()
-                }, { merge: true });
-                savedCount++;
-            }
+            await setDoc(docRef, {
+                mlb_id: safeId,
+                title: item.title || 'Produto sem título',
+                price: Number(item.price) || 0,
+                image: item.image || '',
+                permalink: item.permalink || '',
+                categoria: 'ofertas',
+                score: 100,
+                data_atualizacao: new Date().toISOString()
+            }, { merge: true });
+            
+            savedCount++;
+            setMsg({ text: `Sincronizando: ${savedCount}/${items.length} itens...`, type: 'info' });
           } catch (e) {
-            console.error('Erro ao salvar item no modo atômico:', e);
+            console.error('Erro ao salvar item:', e);
           }
-        }
+        });
+
+        await Promise.allSettled(savePromises);
         
         if (savedCount > 0) {
           setMsg({ text: `${savedCount} produtos sincronizados (Modo Direto).`, type: 'success' });
