@@ -18,8 +18,9 @@ export default function AdminPage() {
   const [authed, setAuthed] = useState(false);
 
   const [loadingSync, setLoadingSync] = useState(false);
-  const [syncMode, setSyncMode] = useState<'auto' | 'manual'>('auto');
+  const [syncMode, setSyncMode] = useState<'auto' | 'manual' | 'json'>('auto');
   const [manualHtml, setManualHtml] = useState('');
+  const [jsonInput, setJsonInput] = useState('');
 
   const fetchProdutos = async (pwd: string) => {
     try {
@@ -109,29 +110,33 @@ export default function AdminPage() {
 
   const handleSyncVitrine = async () => {
     setLoadingSync(true);
-    setMsg({ text: 'Sincronizando...', type: 'info' });
+    setMsg({ text: 'Iniciando processo...', type: 'info' });
     
     try {
       let items = [];
 
-      if (syncMode === 'manual') {
+      if (syncMode === 'json') {
+        if (!jsonInput) throw new Error('Por favor, cole o JSON gerado pelo script primeiro.');
+        try {
+          items = JSON.parse(jsonInput);
+        } catch (e) {
+          throw new Error('Conteúdo inválido. Certifique-se de copiar exatamente o que o script gerou.');
+        }
+      } else if (syncMode === 'manual') {
         if (!manualHtml) throw new Error('Cole o código-fonte da página primeiro.');
         items = processVitrineHtml(manualHtml);
       } else {
         const baseUrl = 'https://www.mercadolivre.com.br/social/rodriguesleonardo2022060705062/lists/765f49c4-4f0c-4da3-9d46-e3ffe7e32ce2?matt_tool=55704581&forceInApp=true';
-        
         let allItems: any[] = [];
-        // Percorre até 5 páginas (cerca de 75-100 itens)
+        
         for (let page = 1; page <= 5; page++) {
           setMsg({ text: `Buscando produtos da página ${page}...`, type: 'info' });
           const urlVitrine = page === 1 ? baseUrl : `${baseUrl}&page=${page}`;
           let html = '';
-          
           const proxies = [
             { fn: (u: string) => `/api/admin/proxy?url=${encodeURIComponent(u)}`, type: 'text' },
             { fn: (u: string) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`, type: 'json' },
-            { fn: (u: string) => `https://corsproxy.io/?${encodeURIComponent(u)}`, type: 'text' },
-            { fn: (u: string) => `https://thingproxy.freeboard.io/fetch/${u}`, type: 'text' }
+            { fn: (u: string) => `https://corsproxy.io/?${encodeURIComponent(u)}`, type: 'text' }
           ];
 
           for (const proxy of proxies) {
@@ -144,85 +149,41 @@ export default function AdminPage() {
                 } else {
                   html = await res.text();
                 }
-                if (html && html.length > 1000) break;
+                if (html && html.length > 2000) break;
               }
-            } catch (e) {
-              console.warn(`Proxy falhou na página ${page}, tentando próximo...`);
-            }
+            } catch (e) {}
           }
 
           if (html) {
             try {
               const pageItems = processVitrineHtml(html);
-              if (pageItems.length === 0) {
-                console.log(`Página ${page} vazia, lista finalizada.`);
-                break; 
-              }
-              
+              if (pageItems.length === 0) break;
               const newItems = pageItems.filter((pi: any) => !allItems.some((ai: any) => ai.id === pi.id));
-              if (newItems.length === 0 && page > 1) {
-                console.log('Sem novos itens nesta página, finalizando.');
-                break;
-              }
-              
+              if (newItems.length === 0 && page > 1) break;
               allItems = [...allItems, ...newItems];
-              console.log(`Página ${page} processada. Acumulados: ${allItems.length}`);
-              
-              // Pequena pausa para evitar bloqueios de taxa (rate limit)
               await new Promise(r => setTimeout(r, 600));
-            } catch (e) {
-              console.warn(`Erro no processamento da página ${page}:`, e);
-              // Não quebra o loop se já tivermos itens, apenas continua para salvar o que já pegou
-              if (allItems.length > 0) break;
-              else throw e;
-            }
-          } else {
-            console.warn(`Falha crítica ao obter HTML da página ${page}`);
-            break;
-          }
+            } catch (e) { if (allItems.length > 0) break; else throw e; }
+          } else break;
         }
-        
-        if (allItems.length === 0) throw new Error('Não foi possível capturar nenhum produto das páginas. Tente novamente mais tarde ou use o Modo Manual.');
         items = allItems;
       }
 
-      if (items.length === 0) throw new Error('Nenhum produto encontrado no código fornecido.');
+      if (items.length === 0) throw new Error('Nenhum produto identificado. Verifique os dados e tente novamente.');
 
-      const resSave = await fetch('/api/admin/sync-vitrine', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${password}`
-        },
-        body: JSON.stringify({ items })
-      });
+      // SALVAMENTO EM LOTES (Batching)
+      console.log(`Iniciando salvamento de ${items.length} itens em lotes...`);
+      let savedCount = 0;
+      const CHUNK_SIZE = 10;
       
-      let finalData;
-      try { 
-        finalData = await resSave.json(); 
-      } catch (e) {
-        finalData = { success: false, error: 'Erro de resposta do servidor (502). Iniciando modo de salvamento atômico...' };
-      }
-
-      if (finalData.success) {
-        setMsg({ text: `${finalData.message} (${items.length} itens)`, type: 'success' });
-        setManualHtml('');
-        fetchProdutos(password);
-      } else {
-        // FALLBACK: Se o batch falhar, tenta salvar em paralelo direto no Firestore
-        console.warn('Batch sync falhou, iniciando salvamento paralelo direto...');
-        setMsg({ text: `Iniciando salvamento de ${items.length} itens...`, type: 'info' });
-        
-        let savedCount = 0;
-        const savePromises = items.map(async (item: any, index: number) => {
+      for (let i = 0; i < items.length; i += CHUNK_SIZE) {
+        const chunk = items.slice(i, i + CHUNK_SIZE);
+        const savePromises = chunk.map(async (item: any) => {
           try {
-            // Gravação Direta via Cliente (Garante velocidade e bypass de 502)
-            const safeId = String(item.id).split('/').pop()?.replace(/[^a-zA-Z0-9_-]/g, '') || Math.random().toString(36).substr(2, 9);
+            const safeId = String(item.id || item.mlb_id).split('/').pop()?.replace(/[^a-zA-Z0-9_-]/g, '') || Math.random().toString(36).substr(2, 9);
             const docRef = doc(db, 'produtos', safeId);
-            
             await setDoc(docRef, {
                 mlb_id: safeId,
-                title: item.title || 'Produto sem título',
+                title: item.title || 'Produto Mercado Livre',
                 price: Number(item.price) || 0,
                 image: item.image || '',
                 permalink: item.permalink || '',
@@ -230,26 +191,24 @@ export default function AdminPage() {
                 score: 100,
                 data_atualizacao: new Date().toISOString()
             }, { merge: true });
-            
             savedCount++;
-            setMsg({ text: `Sincronizando: ${savedCount}/${items.length} itens...`, type: 'info' });
-          } catch (e) {
-            console.error('Erro ao salvar item:', e);
-          }
+          } catch (e) { console.error('Erro ao salvar item:', e); }
         });
 
         await Promise.allSettled(savePromises);
-        
-        if (savedCount > 0) {
-          setMsg({ text: `${savedCount} produtos sincronizados (Modo Direto).`, type: 'success' });
-          setManualHtml('');
-          fetchProdutos(password);
-        } else {
-          throw new Error('Falha total na sincronização. Verifique os logs e tente novamente.');
-        }
+        setMsg({ text: `Salvando: ${savedCount}/${items.length} concluídos...`, type: 'info' });
+      }
+      
+      if (savedCount > 0) {
+        setMsg({ text: `${savedCount} produtos sincronizados com sucesso!`, type: 'success' });
+        setManualHtml('');
+        setJsonInput('');
+        fetchProdutos(password);
+      } else {
+        throw new Error('Falha ao salvar os produtos no banco de dados.');
       }
     } catch (error: any) {
-      setMsg({ text: 'Falha: ' + (error.message || 'Erro de rede'), type: 'error' });
+      setMsg({ text: 'Falha: ' + (error.message || 'Erro inesperado'), type: 'error' });
     } finally {
       setLoadingSync(false);
     }
@@ -502,33 +461,58 @@ export default function AdminPage() {
               Automático
             </button>
             <button 
+              onClick={() => setSyncMode('json')}
+              type="button"
+              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${syncMode === 'json' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'}`}
+            >
+              Turbo (JSON)
+            </button>
+            <button 
               onClick={() => setSyncMode('manual')}
               type="button"
               className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${syncMode === 'manual' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'}`}
             >
-              Manual (Código)
+              Manual
             </button>
           </div>
         </div>
 
         <div className="space-y-6">
-          {syncMode === 'manual' ? (
+          {syncMode === 'json' ? (
             <div className="space-y-4">
-              <div className="bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-800/30 p-4 rounded-2xl">
-                <p className="text-xs text-indigo-700 dark:text-indigo-300 leading-relaxed">
-                  <strong>Bypass de Bloqueio:</strong> Se o modo automático falhar, entre na sua lista no ML pelo navegador, pressione <code>Ctrl+U</code>, selecione tudo (<code>Ctrl+A</code>), copie e cole aqui.
+              <div className="bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-800/30 p-5 rounded-2xl">
+                <h4 className="text-sm font-bold text-indigo-900 dark:text-indigo-100 mb-2">Instruções do Modo Turbo (Mais Seguro):</h4>
+                <ol className="text-xs text-indigo-700 dark:text-indigo-300 space-y-2 list-decimal ml-4">
+                  <li>Abra sua vitrine no Mercado Livre.</li>
+                  <li>Aperte <code>F12</code> ou clique em Inspecionar &gt; Console.</li>
+                  <li>Cole o script que eu te passei no chat e aperte <code>Enter</code>.</li>
+                  <li>Os dados serão copiados. Volte aqui e cole abaixo.</li>
+                </ol>
+              </div>
+              <textarea
+                value={jsonInput}
+                onChange={(e) => setJsonInput(e.target.value)}
+                placeholder='Cole aqui o JSON gerado pelo script...'
+                className="w-full h-40 bg-gray-50 dark:bg-slate-800/50 border border-gray-200 dark:border-slate-700 rounded-2xl px-4 py-4 text-gray-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-mono text-xs"
+              />
+            </div>
+          ) : syncMode === 'manual' ? (
+            <div className="space-y-4">
+              <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-800/30 p-4 rounded-2xl">
+                <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
+                  <strong>Backup:</strong> Se nada der certo, entre na sua lista no ML, pressione <code>Ctrl+U</code>, copie todo o código e cole aqui.
                 </p>
               </div>
               <textarea
                 value={manualHtml}
                 onChange={(e) => setManualHtml(e.target.value)}
-                placeholder="Cole aqui o código-fonte (HTML) da sua vitrine do Mercado Livre..."
+                placeholder="Cole aqui o código-fonte (HTML) da sua vitrine..."
                 className="w-full h-40 bg-gray-50 dark:bg-slate-800/50 border border-gray-200 dark:border-slate-700 rounded-2xl px-4 py-4 text-gray-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-mono text-[10px]"
               />
             </div>
           ) : (
             <div className="bg-gray-50 dark:bg-slate-800/30 border border-gray-200 dark:border-slate-700 p-6 rounded-2xl text-center">
-              <p className="text-gray-500 dark:text-gray-400 text-sm">O sistema tentará buscar os produtos usando o link direto da sua vitrine social via proxy.</p>
+              <p className="text-gray-500 dark:text-gray-400 text-sm">O sistema tentará buscar os produtos automaticamente via proxy (Páginas 1 a 5).</p>
             </div>
           )}
 
