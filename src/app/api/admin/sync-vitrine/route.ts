@@ -22,55 +22,93 @@ export async function POST(request: Request) {
 
     // 2. Se não vierem itens, tenta buscar no Servidor (Server-Side Sync principal)
     if (items.length === 0) {
-      console.log('[Sync] Buscando dados diretamente no link da Vitrine ML...');
-      // Link direto fornecido pelo usuário
+      console.log('[Sync] Iniciando busca no servidor...');
       const url = 'https://www.mercadolivre.com.br/social/rodriguesleonardo2022060705062/lists/765f49c4-4f0c-4da3-9d46-e3ffe7e32ce2?matt_tool=55704581&forceInApp=true';
       
       const response = await fetch(url, {
         headers: { 
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-          'Accept': 'text/html'
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+          'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
         },
         redirect: 'follow'
-      }).catch(err => {
-          throw new Error(`Falha de rede servidor: ${err.message}.`);
       });
 
-      if (!response.ok) throw new Error(`ML retornou status ${response.status}`);
+      if (!response.ok) {
+        console.error('[Sync] Erro HTTP:', response.status);
+        throw new Error(`Mercado Livre retornou status ${response.status}. Tente novamente mais tarde.`);
+      }
 
       const html = await response.text();
+      console.log('[Sync] HTML recebido, tamanho:', html.length);
+      
       const marker = '_n.ctx.r=';
       const markerIdx = html.indexOf(marker);
       
-      if (markerIdx === -1) throw new Error('Estrutura de dados da vitrine não encontrada (_n.ctx.r ausente).');
+      if (markerIdx === -1) {
+        console.error('[Sync] Marcador _n.ctx.r não encontrado no HTML.');
+        throw new Error('A estrutura da página mudou ou o acesso foi bloqueado pelo ML.');
+      }
 
       const startIdx = markerIdx + marker.length;
-      const endIdx = html.indexOf('};', startIdx);
-      if (endIdx === -1) throw new Error('Falha ao delimitar dados da vitrine.');
+      
+      // Busca balanceada de chaves para pegar o objeto JSON {}
+      let depth = 0;
+      let endIdx = -1;
+      let foundStart = false;
+
+      for (let i = startIdx; i < html.length; i++) {
+        if (html[i] === '{') {
+          depth++;
+          foundStart = true;
+        } else if (html[i] === '}') {
+          depth--;
+          if (foundStart && depth === 0) {
+            endIdx = i;
+            break;
+          }
+        }
+      }
+
+      if (endIdx === -1) {
+        console.error('[Sync] Falha ao delimitar o objeto JSON.');
+        throw new Error('Erro ao processar os dados da página.');
+      }
 
       const jsonStr = html.substring(startIdx, endIdx + 1);
       const data = JSON.parse(jsonStr);
+      console.log('[Sync] JSON parseado com sucesso.');
       
-      // Acessa polycards: window._n.ctx.r.appProps.pageProps.polycards
       const polycards = data.appProps?.pageProps?.polycards || [];
+      console.log('[Sync] Total de polycards encontrados:', polycards.length);
       
       items = polycards.map((p: any) => {
-        const titleComp = p.components?.find((c: any) => c.type === 'title');
-        const priceComp = p.components?.find((c: any) => c.type === 'price');
-        const id = p.pictures?.pictures?.[0]?.id || p.metadata?.id || p.unique_id;
-        
-        return {
-          id: id,
-          title: titleComp?.title?.text || 'Produto',
-          price: priceComp?.price?.current_price?.value || 0,
-          image: id ? `https://http2.mlstatic.com/D_NQ_NP_${id}-O.webp` : '',
-          permalink: p.metadata?.url + (p.metadata?.url_params || '') + (p.metadata?.url_fragments || '')
-        };
-      });
+        try {
+          const titleComp = p.components?.find((c: any) => c.type === 'title');
+          const priceComp = p.components?.find((c: any) => c.type === 'price');
+          const id = p.pictures?.pictures?.[0]?.id || p.metadata?.id || p.unique_id || Math.random().toString(36).substr(2, 9);
+          const permalink = p.metadata?.url || '';
+          const params = p.metadata?.url_params || '';
+          const fragments = p.metadata?.url_fragments || '';
+
+          return {
+            id: id,
+            title: titleComp?.title?.text || 'Produto',
+            price: priceComp?.price?.current_price?.value || 0,
+            image: id ? `https://http2.mlstatic.com/D_NQ_NP_${id}-O.webp` : '',
+            permalink: permalink + params + fragments
+          };
+        } catch (e) {
+          return null;
+        }
+      }).filter(Boolean);
     }
 
     if (items.length === 0) {
-      return NextResponse.json({ message: 'Nenhum item encontrado para sincronizar.' });
+      console.log('[Sync] Nenhum item válido após o mapeamento.');
+      return NextResponse.json({ success: false, error: 'Nenhum produto encontrado.' });
     }
 
     // 3. Persistência no Firestore
