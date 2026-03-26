@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { db } from '@/lib/firebase';
 import { collection, query, orderBy, getDocs, deleteDoc, doc, setDoc } from 'firebase/firestore';
 
-const categorias = ['eletronicos', 'casa', 'moda', 'saude', 'estudos', 'esportes', 'beleza', 'automotivo'];
+const categorias = ['ofertas', 'eletronicos', 'casa', 'moda', 'saude', 'estudos', 'esportes', 'beleza', 'automotivo'];
 
 export default function AdminPage() {
   const [url, setUrl] = useState('');
@@ -226,7 +226,7 @@ export default function AdminPage() {
                 price: Number(item.price) || 0,
                 image: item.image || '',
                 permalink: item.permalink || '',
-                categoria: 'ofertas',
+                categoria: categoria,
                 score: 100,
                 data_atualizacao: new Date().toISOString()
             }, { merge: true });
