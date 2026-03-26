@@ -3,7 +3,6 @@ import fs from 'fs';
 import path from 'path';
 
 const DB_PATH = path.join(process.cwd(), 'data', 'produtos.json');
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'promox2026';
 
 const PRODUTOS_VITRINE = [
   { url: 'https://www.mercadolivre.com.br/creatina-monohidratada-250g-growth-supplements-sem-sabor-em-po/p/MLB19603205', categoria: 'saude' },
@@ -58,7 +57,9 @@ async function scrapeProduct(url: string) {
 
 export async function POST(request: Request) {
   const authHeader = request.headers.get('authorization');
-  if (!authHeader || authHeader !== `Bearer ${ADMIN_PASSWORD}`) {
+  const expectedPassword = process.env.ADMIN_PASSWORD || 'promox2026';
+
+  if (!authHeader || authHeader !== `Bearer ${expectedPassword}`) {
     return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
   }
 

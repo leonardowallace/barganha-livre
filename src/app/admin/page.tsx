@@ -124,8 +124,8 @@ export default function AdminPage() {
           <div className="w-16 h-16 bg-blue-600 rounded-2xl mx-auto mb-6 flex items-center justify-center shadow-lg shadow-blue-500/20">
             <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
           </div>
-          <h2 className="text-2xl font-black text-gray-900 dark:text-white mb-2">Áre Restrita</h2>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mb-8">Digite a senha administrativa para acessar o PromoX.</p>
+          <h2 className="text-2xl font-black text-gray-900 dark:text-white mb-2">Área Restrita</h2>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mb-8">Digite a senha administrativa para acessar o X Promo.</p>
           
           <input 
             type="password" 
@@ -152,7 +152,7 @@ export default function AdminPage() {
     <div className="max-w-4xl mx-auto py-10 px-4">
       <header className="flex justify-between items-center mb-10 border-l-4 border-blue-600 pl-6">
         <div>
-          <h1 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">Painel PromoX</h1>
+          <h1 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">Painel X Promo</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 font-medium uppercase tracking-widest mt-1">Gerenciamento de Vitrine</p>
         </div>
         <button 

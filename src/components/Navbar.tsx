@@ -20,7 +20,7 @@ export default function Navbar() {
         <div className="flex items-center justify-between h-16">
           <div className="flex items-center">
             <Link href="/" className="font-extrabold text-2xl tracking-tighter text-blue-800 dark:text-blue-400">
-              Promo<span className="text-yellow-500">X</span>
+              X <span className="text-yellow-500">Promo</span>
             </Link>
           </div>
           <div className="hidden md:flex items-center">

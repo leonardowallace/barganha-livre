@@ -1,6 +1,6 @@
-# PromoX - Plataforma Automática de Afiliados
+# X Promo - Plataforma Automática de Afiliados
 
-PromoX é um ecossistema de curadoria de ofertas automatizado, desenvolvido para capturar os melhores produtos do Mercado Livre em tempo real e rentabilizá-los através de links de afiliado injetados dinamicamente.
+X Promo é um ecossistema de curadoria de ofertas automatizado, desenvolvido para capturar os melhores produtos do Mercado Livre em tempo real e rentabilizá-los através de links de afiliado injetados dinamicamente.
 
 ## 🏗️ Arquitetura do Sistema
 
@@ -27,7 +27,7 @@ O sistema utiliza **Next.js (App Router)** atuando em duas frentes:
 ### Passos:
 1. Extraia e acesse a pasta do projeto:
 \`\`\`bash
-cd PromoX
+cd X Promo
 \`\`\`
 
 2. Instale as dependências:

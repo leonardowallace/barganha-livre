@@ -1,10 +1,10 @@
-# Business Case: PromoX
+# Business Case: X Promo
 
 ## 1. O Problema
 Criar conteúdo manualmente para afiliação exige muito tempo (buscando produtos, encontrando as melhores imagens, comparando preços, avaliando vendas e gerando o link encurtado de afiliados). Além disso, vitrines estáticas ficam rapidamente desatualizadas, levando o cliente a anúncios pausados e causando frustração e perda da comissão.
 
 ## 2. A Solução (Proposta de Valor)
-PromoX soluciona o "trabalho braçal" do mercado de afiliados. A plataforma atua como uma **vitrine em tempo real, autônoma e inteligente**. Ela faz o trabalho pesado de curadoria, listando automaticamente os itens com maior índice de vendas na internet e garantindo que o link final já contenha o traqueamento, 100% livre da necessidade de inserção manual de produtos.
+X Promo soluciona o "trabalho braçal" do mercado de afiliados. A plataforma atua como uma **vitrine em tempo real, autônoma e inteligente**. Ela faz o trabalho pesado de curadoria, listando automaticamente os itens com maior índice de vendas na internet e garantindo que o link final já contenha o traqueamento, 100% livre da necessidade de inserção manual de produtos.
 
 ## 3. Público-Alvo
 - **B2C (Consumidor Final):** Pessoas buscando produtos validados com desconto em categorias essenciais (eletrônicos, casa, moda). E-shoppers que querem a segurança de encontrar o "produto que todos estão comprando".
