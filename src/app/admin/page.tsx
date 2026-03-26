@@ -34,28 +34,76 @@ export default function AdminPage() {
 
   const handleSyncVitrine = async () => {
     setLoadingSync(true);
-    setMsg({ text: 'Sincronizando com sua vitrine do Mercado Livre... Aguarde.', type: 'info' });
+    setMsg({ text: 'Iniciando sincronização inteligente... (Bypass de Bloqueio)', type: 'info' });
     
     try {
-      const res = await fetch('/api/admin/sync-vitrine', {
+      const urlVitrine = 'https://www.mercadolivre.com.br/social/rodriguesleonardo2022060705062/lists/765f49c4-4f0c-4da3-9d46-e3ffe7e32ce2?matt_tool=55704581&forceInApp=true';
+      
+      // Usamos o proxy AllOrigins para evitar CORS e o link direto para evitar 502 do servidor
+      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(urlVitrine)}`;
+      
+      const resProxy = await fetch(proxyUrl);
+      if (!resProxy.ok) throw new Error('Falha ao conectar com o servidor de sincronização.');
+      
+      const proxyData = await resProxy.json();
+      const html = proxyData.contents;
+      
+      const marker = '_n.ctx.r=';
+      const markerIdx = html.indexOf(marker);
+      if (markerIdx === -1) throw new Error('Dados não encontrados. Verifique se o link da vitrine está correto.');
+
+      const startIdx = markerIdx + marker.length;
+      let depth = 0;
+      let endIdx = -1;
+      let foundStart = false;
+
+      for (let i = startIdx; i < html.length; i++) {
+        if (html[i] === '{') { depth++; foundStart = true; }
+        else if (html[i] === '}') {
+          depth--;
+          if (foundStart && depth === 0) { endIdx = i; break; }
+        }
+      }
+
+      if (endIdx === -1) throw new Error('Erro ao processar dados da página.');
+
+      const jsonStr = html.substring(startIdx, endIdx + 1);
+      const data = JSON.parse(jsonStr);
+      const polycards = data.appProps?.pageProps?.polycards || [];
+      
+      const items = polycards.map((p: any) => {
+        const titleComp = p.components?.find((c: any) => c.type === 'title');
+        const priceComp = p.components?.find((c: any) => c.type === 'price');
+        const id = p.pictures?.pictures?.[0]?.id || p.metadata?.id || p.unique_id;
+        return {
+          id: id,
+          title: titleComp?.title?.text || 'Produto',
+          price: priceComp?.price?.current_price?.value || 0,
+          image: id ? `https://http2.mlstatic.com/D_NQ_NP_${id}-O.webp` : '',
+          permalink: p.metadata?.url + (p.metadata?.url_params || '') + (p.metadata?.url_fragments || '')
+        };
+      });
+
+      // Salva no Firestore via Servidor
+      const resSave = await fetch('/api/admin/sync-vitrine', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${password}`
         },
-        body: JSON.stringify({ }) // Vazio para disparar sync automático
+        body: JSON.stringify({ items })
       });
       
-      const data = await res.json();
+      const finalData = await resSave.json();
       
-      if (data.success) {
-        setMsg({ text: data.message, type: 'success' });
+      if (finalData.success) {
+        setMsg({ text: finalData.message, type: 'success' });
         fetchProdutos(password);
       } else {
-        setMsg({ text: 'Erro na sincronização: ' + (data.error || 'Erro desconhecido'), type: 'error' });
+        setMsg({ text: 'Erro ao salvar: ' + (finalData.error || 'Erro desconhecido'), type: 'error' });
       }
-    } catch (error) {
-      setMsg({ text: 'Falha na comunicação com o servidor.', type: 'error' });
+    } catch (error: any) {
+      setMsg({ text: 'Falha: ' + (error.message || 'Erro de rede'), type: 'error' });
     } finally {
       setLoadingSync(false);
     }
