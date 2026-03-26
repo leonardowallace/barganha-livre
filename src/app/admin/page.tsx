@@ -117,14 +117,30 @@ export default function AdminPage() {
         items = processVitrineHtml(manualHtml);
       } else {
         const urlVitrine = 'https://www.mercadolivre.com.br/social/rodriguesleonardo2022060705062/lists/765f49c4-4f0c-4da3-9d46-e3ffe7e32ce2?matt_tool=55704581&forceInApp=true';
-        // Bypass via proxy AllOrigins para evitar 502 do servidor e restrições de rede
-        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(urlVitrine)}`;
         
-        const resProxy = await fetch(proxyUrl);
-        if (!resProxy.ok) throw new Error('Erro de conexão. Use o Modo Manual abaixo.');
-        
-        const proxyData = await resProxy.json();
-        items = processVitrineHtml(proxyData.contents);
+        let html = '';
+        // Tenta proxies em cascata para máxima resiliência
+        const proxies = [
+          (u: string) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`,
+          (u: string) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+          (u: string) => `https://thingproxy.freeboard.io/fetch/${u}`
+        ];
+
+        for (const getProxy of proxies) {
+          try {
+            const res = await fetch(getProxy(urlVitrine));
+            if (res.ok) {
+              const data = await res.json();
+              html = data.contents || data; // AllOrigins usa .contents, outros mandam direto
+              if (html && html.length > 1000) break;
+            }
+          } catch (e) {
+            console.warn('Proxy falhou, tentando próximo...', e);
+          }
+        }
+
+        if (!html) throw new Error('Falha ao acessar lista via proxy. Por favor, use o "Modo Manual (Código)" abaixo.');
+        items = processVitrineHtml(html);
       }
 
       if (items.length === 0) throw new Error('Nenhum produto encontrado no código fornecido.');
@@ -193,11 +209,24 @@ export default function AdminPage() {
 
       // 1. Tenta extrair dados via Cliente (evita bloqueio no servidor)
       try {
-        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-        const resProxy = await fetch(proxyUrl);
-        if (resProxy.ok) {
-          const proxyData = await resProxy.json();
-          const html = proxyData.contents;
+        let html = '';
+        const proxies = [
+          (u: string) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`,
+          (u: string) => `https://corsproxy.io/?${encodeURIComponent(u)}`
+        ];
+
+        for (const getProxy of proxies) {
+          try {
+            const res = await fetch(getProxy(url));
+            if (res.ok) {
+              const data = await res.json();
+              html = data.contents || data;
+              if (html && html.length > 500) break;
+            }
+          } catch (e) {}
+        }
+
+        if (html) {
           const titleMatch = html.match(/<meta\s+(?:property|name)="og:title"\s+content="([^"]+)"/i);
           const imageMatch = html.match(/<meta\s+(?:property|name)="og:image"\s+content="([^"]+)"/i);
           const priceMatch = html.match(/<meta\s+itemprop="price"\s+content="([^"]+)"/i) || html.match(/"price":\s*(\d+(?:\.\d+)?)/i);
@@ -362,7 +391,7 @@ export default function AdminPage() {
           >
             {loading ? (
                <><svg className="animate-spin h-5 w-5 text-white" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Processando Link...</>
-            ) : 'Cadastrar Produto Manual'}
+            ) : 'Adicionar Produto'}
           </button>
         </form>
       </div>

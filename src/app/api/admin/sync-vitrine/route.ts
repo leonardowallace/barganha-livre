@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/firebase';
-import { collection, getDocs, doc, writeBatch } from 'firebase/firestore';
+import { collection, doc, setDoc } from 'firebase/firestore';
 
 function verifyAuth(request: Request) {
   const authHeader = request.headers.get('authorization');
@@ -15,43 +15,52 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { items } = body;
+    const { items = [] } = body;
+
     if (!items || items.length === 0) {
       return NextResponse.json({ success: false, error: 'Aguardando envio de dados do navegador...' });
     }
 
-    // 3. Persistência no Firestore (Otimizada: ID do Documento = ID do MLB)
-    // Isso evita duplicatas automaticamente e é muito mais rápido que buscar a lista toda
-    const batch = writeBatch(db);
-    let count = 0;
+    console.log(`[Sync] Processando ${items.length} itens.`);
 
-    items.forEach((item: any) => {
-      if (!item.id) return;
+    const results = await Promise.allSettled(items.map(async (item: any) => {
+      if (!item || !item.id) return;
       
-      const docRef = doc(db, 'produtos', item.id);
-      batch.set(docRef, {
-        mlb_id: item.id,
-        title: item.title,
-        price: item.price,
-        image: item.image,
-        permalink: item.permalink,
-        categoria: 'ofertas', // Default para vitrine
+      const safeId = String(item.id)
+        .split('/')
+        .pop()
+        ?.replace(/[^a-zA-Z0-9_-]/g, '') || Math.random().toString(36).substr(2, 9);
+
+      const docRef = doc(db, 'produtos', safeId);
+      
+      await setDoc(docRef, {
+        mlb_id: safeId,
+        title: item.title || 'Produto sem título',
+        price: Number(item.price) || 0,
+        image: item.image || '',
+        permalink: item.permalink || '',
+        categoria: 'ofertas',
         score: 100,
         data_atualizacao: new Date().toISOString()
       }, { merge: true });
-      count++;
-    });
-    
-    await batch.commit();
+      
+      return safeId;
+    }));
+
+    const count = results.filter(r => r.status === 'fulfilled').length;
+    console.log(`[Sync] Sincronizados ${count} de ${items.length} com sucesso.`);
 
     return NextResponse.json({ 
       success: true, 
-      message: `${count} produtos sincronizados com sucesso!`,
+      message: `${count} produtos sincronizados!`,
       count: count
     });
 
   } catch (error: any) {
-    console.error('Sync Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error('Sync Fatal Error:', error);
+    return NextResponse.json({ 
+      success: false, 
+      error: error.message || 'Erro inesperado no servidor'
+    }, { status: 500 });
   }
 }
