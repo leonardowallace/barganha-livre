@@ -154,22 +154,35 @@ export default function AdminPage() {
           if (html) {
             try {
               const pageItems = processVitrineHtml(html);
-              if (pageItems.length === 0) break; // Fim das páginas
+              if (pageItems.length === 0) {
+                console.log(`Página ${page} vazia, lista finalizada.`);
+                break; 
+              }
               
-              // Evita duplicatas pelo ID
               const newItems = pageItems.filter((pi: any) => !allItems.some((ai: any) => ai.id === pi.id));
-              if (newItems.length === 0) break;
+              if (newItems.length === 0 && page > 1) {
+                console.log('Sem novos itens nesta página, finalizando.');
+                break;
+              }
               
               allItems = [...allItems, ...newItems];
-              console.log(`Página ${page} processada. Total acumulado: ${allItems.length}`);
+              console.log(`Página ${page} processada. Acumulados: ${allItems.length}`);
+              
+              // Pequena pausa para evitar bloqueios de taxa (rate limit)
+              await new Promise(r => setTimeout(r, 600));
             } catch (e) {
-              console.warn(`Erro ao processar página ${page}, encerrando busca.`, e);
-              break;
+              console.warn(`Erro no processamento da página ${page}:`, e);
+              // Não quebra o loop se já tivermos itens, apenas continua para salvar o que já pegou
+              if (allItems.length > 0) break;
+              else throw e;
             }
           } else {
+            console.warn(`Falha crítica ao obter HTML da página ${page}`);
             break;
           }
         }
+        
+        if (allItems.length === 0) throw new Error('Não foi possível capturar nenhum produto das páginas. Tente novamente mais tarde ou use o Modo Manual.');
         items = allItems;
       }
 
