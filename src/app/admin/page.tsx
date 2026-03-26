@@ -154,13 +154,52 @@ export default function AdminPage() {
         body: JSON.stringify({ items })
       });
       
-      const finalData = await resSave.json();
+      let finalData;
+      try { 
+        finalData = await resSave.json(); 
+      } catch (e) {
+        finalData = { success: false, error: 'Erro de resposta do servidor (502). Iniciando modo de salvamento atômico...' };
+      }
+
       if (finalData.success) {
         setMsg({ text: `${finalData.message} (${items.length} itens)`, type: 'success' });
         setManualHtml('');
         fetchProdutos(password);
       } else {
-        setMsg({ text: 'Erro ao salvar: ' + (finalData.error || 'Erro desconhecido'), type: 'error' });
+        // FALLBACK: Se o batch falhar (ex: 502 Timeout no Netlify), tenta um a um
+        console.warn('Batch sync falhou, tentando salvamento atômico...', finalData.error);
+        setMsg({ text: 'Salvando produtos um a um (modo de segurança)...', type: 'info' });
+        
+        let savedCount = 0;
+        for (const item of items) {
+          try {
+            const resSingle = await fetch('/api/admin/produtos', {
+              method: 'POST',
+              headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${password}`
+              },
+              body: JSON.stringify({ 
+                url: item.permalink, 
+                categoria: 'ofertas',
+                title: item.title,
+                price: item.price,
+                image: item.image
+              }),
+            });
+            if (resSingle.ok) savedCount++;
+          } catch (e) {
+            console.error('Erro ao salvar item individual:', e);
+          }
+        }
+        
+        if (savedCount > 0) {
+          setMsg({ text: `${savedCount} produtos sincronizados individualmente.`, type: 'success' });
+          setManualHtml('');
+          fetchProdutos(password);
+        } else {
+          throw new Error('Falha total na sincronização. Verifique sua conexão e tente novamente.');
+        }
       }
     } catch (error: any) {
       setMsg({ text: 'Falha: ' + (error.message || 'Erro de rede'), type: 'error' });

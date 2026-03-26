@@ -28,7 +28,11 @@ export default function RootLayout({
           }}
         />
         {/* Google Adsense */}
-        <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXX" crossOrigin="anonymous"></script>
+        <script 
+          async 
+          src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${process.env.NEXT_PUBLIC_ADSENSE_ID || 'ca-pub-0000000000000000'}`} 
+          crossOrigin="anonymous">
+        </script>
       </head>
       <body className={`${inter.className} bg-gray-50 dark:bg-[#020617] min-h-screen flex flex-col text-gray-900 dark:text-gray-100 antialiased transition-colors duration-300`}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange={false}>
