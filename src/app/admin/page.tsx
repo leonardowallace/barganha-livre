@@ -1,14 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { db } from '@/lib/firebase';
-import { collection, query, orderBy, getDocs, deleteDoc, doc, setDoc } from 'firebase/firestore';
+import { rtdb } from '@/lib/firebase';
+import { ref, set } from 'firebase/database';
 
-const categorias = ['ofertas', 'eletronicos', 'casa', 'moda', 'saude', 'estudos', 'esportes', 'beleza', 'automotivo'];
+const categorias = ['automatico', 'ofertas', 'eletronicos', 'casa', 'moda', 'saude', 'estudos', 'esportes', 'beleza', 'automotivo'];
 
 export default function AdminPage() {
   const [url, setUrl] = useState('');
-  const [categoria, setCategoria] = useState('eletronicos');
+  const [categoria, setCategoria] = useState('automatico');
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState({ text: '', type: '' });
   const [produtos, setProdutos] = useState<any[]>([]);
@@ -23,6 +23,7 @@ export default function AdminPage() {
   const [jsonInput, setJsonInput] = useState('');
 
   const fetchProdutos = async (pwd: string) => {
+    if (!pwd) return;
     try {
       const res = await fetch('/api/admin/produtos', {
         headers: { 'Authorization': `Bearer ${pwd}` }
@@ -31,11 +32,27 @@ export default function AdminPage() {
         const data = await res.json();
         data.sort((a: any, b: any) => new Date(b.data_adicionado).getTime() - new Date(a.data_adicionado).getTime());
         setProdutos(data);
+      } else if (res.status === 401) {
+        setAuthed(false);
       }
     } catch (error) {
       console.error('Erro ao buscar produtos:', error);
     }
   };
+
+  // Polling automático a cada 10 segundos quando logado
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (authed && password) {
+      fetchProdutos(password); // Busca imediata
+      interval = setInterval(() => {
+        fetchProdutos(password);
+      }, 10000); // 10 segundos
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [authed, password]);
 
   const processVitrineHtml = (html: string) => {
     console.log('Iniciando processamento de HTML...', html.length);
@@ -132,26 +149,25 @@ export default function AdminPage() {
         for (let page = 1; page <= 5; page++) {
           setMsg({ text: `Buscando produtos da página ${page}...`, type: 'info' });
           const urlVitrine = page === 1 ? baseUrl : `${baseUrl}&page=${page}`;
+          
           let html = '';
-          const proxies = [
-            { fn: (u: string) => `/api/admin/proxy?url=${encodeURIComponent(u)}`, type: 'text' },
-            { fn: (u: string) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`, type: 'json' },
-            { fn: (u: string) => `https://corsproxy.io/?${encodeURIComponent(u)}`, type: 'text' }
-          ];
+          try {
+            console.log(`[PIPELINE-FRONT] Sync Página ${page} via Proxy Interno...`);
+            const res = await fetch(`/api/admin/proxy?url=${encodeURIComponent(urlVitrine)}`);
+            const data = await res.json();
 
-          for (const proxy of proxies) {
-            try {
-              const res = await fetch(proxy.fn(urlVitrine));
-              if (res.ok) {
-                if (proxy.type === 'json') {
-                  const data = await res.json();
-                  html = data.contents || data;
-                } else {
-                  html = await res.text();
-                }
-                if (html && html.length > 2000) break;
-              }
-            } catch (e) {}
+            if (data.success) {
+              html = data.html;
+            } else {
+              console.warn(`[PIPELINE-FRONT] Proxy falhou na página ${page}:`, data.error);
+              // Se falhou na página 1, é erro crítico. Se falhou na 4, talvez apenas não tenha mais páginas.
+              if (page === 1) throw new Error(data.error || 'Falha ao acessar vitrine');
+              break; 
+            }
+          } catch (e: any) {
+            console.error(`[PIPELINE-FRONT] Erro na requisição da página ${page}:`, e.message);
+            if (page === 1) throw e;
+            break;
           }
 
           if (html) {
@@ -162,7 +178,10 @@ export default function AdminPage() {
               if (newItems.length === 0 && page > 1) break;
               allItems = [...allItems, ...newItems];
               await new Promise(r => setTimeout(r, 600));
-            } catch (e) { if (allItems.length > 0) break; else throw e; }
+            } catch (e) { 
+              console.warn(`[PIPELINE-FRONT] Erro ao processar HTML da página ${page}:`, e);
+              if (allItems.length > 0) break; else throw e; 
+            }
           } else break;
         }
         items = allItems;
@@ -170,33 +189,36 @@ export default function AdminPage() {
 
       if (items.length === 0) throw new Error('Nenhum produto identificado. Verifique os dados e tente novamente.');
 
-      // SALVAMENTO EM LOTES (Batching)
-      console.log(`Iniciando salvamento de ${items.length} itens em lotes...`);
+      // SALVAMENTO SEQÜENCIAL (Um por Um)
+      console.log(`Iniciando salvamento seqüencial de ${items.length} itens...`);
       let savedCount = 0;
-      const CHUNK_SIZE = 10;
       
-      for (let i = 0; i < items.length; i += CHUNK_SIZE) {
-        const chunk = items.slice(i, i + CHUNK_SIZE);
-        const savePromises = chunk.map(async (item: any) => {
-          try {
-            const safeId = String(item.id || item.mlb_id).split('/').pop()?.replace(/[^a-zA-Z0-9_-]/g, '') || Math.random().toString(36).substr(2, 9);
-            const docRef = doc(db, 'produtos', safeId);
-            await setDoc(docRef, {
-                mlb_id: safeId,
-                title: item.title || 'Produto Mercado Livre',
-                price: Number(item.price) || 0,
-                image: item.image || '',
-                permalink: item.permalink || '',
-                categoria: categoria,
-                score: 100,
-                data_atualizacao: new Date().toISOString()
-            }, { merge: true });
-            savedCount++;
-          } catch (e) { console.error('Erro ao salvar item:', e); }
-        });
-
-        await Promise.allSettled(savePromises);
-        setMsg({ text: `Salvando: ${savedCount}/${items.length} concluídos...`, type: 'info' });
+      for (const item of items) {
+        try {
+          // Extração robusta do ID MLB real (10 dígitos se possível)
+          const mlbMatches = (item.permalink || item.id || '').match(/MLB[-]?(\d+)/i);
+          const rawId = mlbMatches ? mlbMatches[1] : '';
+          const mlbId = rawId ? `MLB${rawId}` : (item.id || item.mlb_id);
+          
+          setMsg({ text: `Salvando [${savedCount + 1}/${items.length}]: ${item.title.substring(0, 30)}...`, type: 'info' });
+          
+          const productRef = ref(rtdb, `produtos/${mlbId}`);
+          await set(productRef, {
+              mlb_id: mlbId,
+              title: (item.title || 'Produto Mercado Livre').substring(0, 150),
+              price: Number(item.price) || 0,
+              image: (item.image || '').replace('-I.', '-O.'), // Força alta qualidade
+              permalink: item.permalink || '',
+              categoria: categoria,
+              score: 100,
+              data_adicionado: new Date().toISOString()
+          });
+          
+          savedCount++;
+          await new Promise(r => setTimeout(r, 100)); 
+        } catch (e) { 
+          console.error('Erro ao salvar item individual:', e); 
+        }
       }
       
       if (savedCount > 0) {
@@ -246,61 +268,35 @@ export default function AdminPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!url) return;
+
+    // Verificação de duplicata preventiva no frontend
+    const mlbMatches = url.match(/MLB[-]?(\d+)/i);
+    const mlbId = mlbMatches ? `MLB${mlbMatches[1]}` : null;
+    
+    if (mlbId && produtos.some(p => p.id === mlbId || p.mlb_id === mlbId)) {
+        if (!confirm('Este produto já parece estar na sua lista. Deseja tentar atualizar os dados dele?')) {
+            return;
+        }
+    }
+    
     setLoading(true);
-    setMsg({ text: 'Extraindo dados do produto...', type: 'info' });
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
 
     try {
-      console.log('[PIPELINE-FRONT] Início Adição Manual:', url);
-      let extractedData = null;
-
-      // 1. Tenta extrair dados via Proxy Interno (mais estável)
-      try {
-        const proxyUrl = `/api/admin/proxy?url=${encodeURIComponent(url)}`;
-        console.log('[PIPELINE-FRONT] Chamando Proxy:', proxyUrl);
-        const resProxy = await fetch(proxyUrl);
-        
-        if (resProxy.ok) {
-          const html = await resProxy.text();
-          console.log('[PIPELINE-FRONT] HTML recebido (tamanho):', html.length);
-          
-          const titleMatch = html.match(/property=["']og:title["']\s+content=["']([^"']+)["']/i) || 
-                             html.match(/content=["']([^"']+)["']\s+property=["']og:title["']/i) ||
-                             html.match(/<meta\s+(?:property|name)="og:title"\s+content="([^"]+)"/i);
-                             
-          const imageMatch = html.match(/property=["']og:image["']\s+content=["']([^"']+)["']/i) || 
-                             html.match(/content=["']([^"']+)["']\s+property=["']og:image["']/i) ||
-                             html.match(/<meta\s+(?:property|name)="og:image"\s+content="([^"]+)"/i);
-                             
-          const priceMatch = html.match(/itemprop=["']price["']\s+content=["']([^"']+)["']/i) || 
-                             html.match(/"price":\s*(\d+(?:\.\d+)?)/i);
-          
-          if (titleMatch && imageMatch) {
-            extractedData = {
-              title: titleMatch[1].replace(/\s*\|\s*Mercado\s*Livre\s*/i, '').trim(),
-              image: imageMatch[1].replace('-W.', '-O.'),
-              price: priceMatch ? parseFloat(priceMatch[1]) : 0
-            };
-            console.log('[PIPELINE-FRONT] Dados Extraídos:', extractedData);
-          }
-        }
-      } catch (e) {
-        console.warn('[PIPELINE-FRONT] Erro na extração via proxy interno:', e);
-      }
-
-      console.log('[PIPELINE-FRONT] Enviando para API /admin/produtos...');
       const res = await fetch('/api/admin/produtos', {
         method: 'POST',
         headers: { 
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${password}`
+            'Authorization': `Bearer ${password}` 
         },
-        body: JSON.stringify({ 
-          url, 
-          categoria,
-          ...(extractedData || {}) 
-        }),
+        body: JSON.stringify({ url, categoria }),
+        signal: controller.signal
       });
 
+      clearTimeout(timeoutId);
       const data = await res.json();
 
       if (!res.ok) {
@@ -309,9 +305,21 @@ export default function AdminPage() {
 
       setMsg({ text: 'Produto adicionado com sucesso!', type: 'success' });
       setUrl('');
-      fetchProdutos(password);
+      
+      // Limpa mensagem de sucesso após 3s
+      setTimeout(() => setMsg({ text: '', type: '' }), 3000);
+      
+      // Atualiza a lista PROGRAMATICAMENTE após o sucesso
+      setTimeout(() => fetchProdutos(password), 500);
+      
     } catch (error: any) {
-      setMsg({ text: error.message, type: 'error' });
+      clearTimeout(timeoutId);
+      if (error.name !== 'AbortError') {
+        setMsg({ text: error.message || 'Falha ao processar link', type: 'error' });
+      } else {
+        // No timeout, apenas limpa o estado de loading e URL
+        setUrl('');
+      }
     } finally {
       setLoading(false);
     }
@@ -407,14 +415,14 @@ export default function AdminPage() {
                 type="url" 
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                placeholder="Ex: https://produto.mercadolivre..." 
+                placeholder="Ex: https://produto.mercadolivre.com.br/MLB-..." 
                 className="w-full px-4 py-3.5 border border-gray-200 dark:border-slate-700 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-gray-50/50 dark:bg-slate-800/50 dark:text-white transition-all outline-none"
                 required
               />
             </div>
             
             <div>
-              <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2 ml-1">Categoria</label>
+              <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2 ml-1">Categoria na Vitrine</label>
               <select 
                 value={categoria}
                 onChange={(e) => setCategoria(e.target.value)}
@@ -436,111 +444,35 @@ export default function AdminPage() {
           >
             {loading ? (
                <><svg className="animate-spin h-5 w-5 text-white" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Processando Link...</>
-            ) : 'Adicionar Produto'}
+            ) : 'Adicionar Produto à Vitrine'}
           </button>
         </form>
       </div>
 
-      {/* Sincronização de Vitrine */}
-      <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] shadow-sm border border-gray-100 dark:border-slate-800 mb-12">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
-          <div>
-            <h2 className="text-2xl font-black text-gray-900 dark:text-white flex items-center gap-3">
-              <span className="w-2 h-8 bg-indigo-600 rounded-full"></span>
-              Vitrine Social Mercado Livre
-            </h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Importe produtos da sua lista de recomendações automaticamente.</p>
+      {/* Seção de Sincronia Automática (Opcional por enquanto) */}
+      <details className="mb-12 group">
+        <summary className="cursor-pointer list-none flex items-center gap-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-400 text-sm font-medium transition-colors ml-4">
+          <svg className="w-4 h-4 transition-transform group-open:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+          Opções Avançadas de Sincronização
+        </summary>
+        <div className="mt-6 bg-gray-50/50 dark:bg-slate-800/20 p-8 rounded-[2.5rem] border border-gray-100 dark:border-slate-800/50">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+            <div>
+              <h2 className="text-xl font-black text-gray-900 dark:text-white flex items-center gap-3">
+                Sync Automático (Em breve)
+              </h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Sincronização em massa via Vitrine Social.</p>
+            </div>
           </div>
-          
-          <div className="flex bg-gray-100 dark:bg-slate-800 rounded-xl p-1 border border-gray-200 dark:border-slate-700">
-            <button 
-              onClick={() => setSyncMode('auto')}
-              type="button"
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${syncMode === 'auto' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'}`}
-            >
-              Automático
-            </button>
-            <button 
-              onClick={() => setSyncMode('json')}
-              type="button"
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${syncMode === 'json' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'}`}
-            >
-              Turbo (JSON)
-            </button>
-            <button 
-              onClick={() => setSyncMode('manual')}
-              type="button"
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${syncMode === 'manual' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'}`}
-            >
-              Manual
-            </button>
-          </div>
-        </div>
-
-        <div className="space-y-6">
-          {syncMode === 'json' ? (
-            <div className="space-y-4">
-              <div className="bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-800/30 p-5 rounded-2xl">
-                <h4 className="text-sm font-bold text-indigo-900 dark:text-indigo-100 mb-2">Instruções do Modo Turbo (Mais Seguro):</h4>
-                <ol className="text-xs text-indigo-700 dark:text-indigo-300 space-y-2 list-decimal ml-4">
-                  <li>Abra sua vitrine no ML.</li>
-                  <li>Inspecionar &gt; Console (F12).</li>
-                  <li>Cole o <b>Script V2</b> que te passei e dê Enter.</li>
-                  <li>Cole o resultado gerado no campo abaixo.</li>
-                </ol>
-              </div>
-              <textarea
-                value={jsonInput}
-                onChange={(e) => setJsonInput(e.target.value)}
-                placeholder='Cole aqui o JSON gerado pelo script...'
-                className="w-full h-40 bg-gray-50 dark:bg-slate-800/50 border border-gray-200 dark:border-slate-700 rounded-2xl px-4 py-4 text-gray-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-mono text-xs"
-              />
-            </div>
-          ) : syncMode === 'manual' ? (
-            <div className="space-y-4">
-              <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-800/30 p-4 rounded-2xl">
-                <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
-                  <strong>Backup:</strong> Se nada der certo, entre na sua lista no ML, pressione <code>Ctrl+U</code>, copie todo o código e cole aqui.
-                </p>
-              </div>
-              <textarea
-                value={manualHtml}
-                onChange={(e) => setManualHtml(e.target.value)}
-                placeholder="Cole aqui o código-fonte (HTML) da sua vitrine..."
-                className="w-full h-40 bg-gray-50 dark:bg-slate-800/50 border border-gray-200 dark:border-slate-700 rounded-2xl px-4 py-4 text-gray-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-mono text-[10px]"
-              />
-            </div>
-          ) : (
-            <div className="bg-gray-50 dark:bg-slate-800/30 border border-gray-200 dark:border-slate-700 p-6 rounded-2xl text-center">
-              <p className="text-gray-500 dark:text-gray-400 text-sm">O sistema tentará buscar os produtos automaticamente via proxy (Páginas 1 a 5).</p>
-            </div>
-          )}
-
           <button
             onClick={handleSyncVitrine}
             disabled={loadingSync}
-            className={`w-full py-4 rounded-2xl flex items-center justify-center gap-3 font-bold text-lg transition-all ${
-              loadingSync 
-              ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
-              : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-xl shadow-indigo-500/20 active:scale-[0.98]'
-            }`}
+            className="w-full py-4 rounded-2xl flex items-center justify-center gap-3 font-bold text-gray-400 border-2 border-dashed border-gray-200 dark:border-slate-800 cursor-not-allowed"
           >
-            {loadingSync ? (
-              <>
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                Sincronizando...
-              </>
-            ) : (
-              <>
-                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                Sync Vitrine Social
-              </>
-            )}
+            Sincronização Desativada Temporariamente
           </button>
         </div>
-      </div>
+      </details>
 
       <div className="flex flex-col sm:flex-row justify-between items-end sm:items-center mb-8 gap-4 px-1">
         <div>

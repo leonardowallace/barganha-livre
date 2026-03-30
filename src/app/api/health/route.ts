@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/firebase';
-import { collection, limit, getDocs } from 'firebase/firestore';
+import { rtdb } from '@/lib/firebase';
+import { ref, get, limitToLast, query } from 'firebase/database';
 
 export async function GET() {
   const diagnostics: any = {
@@ -16,10 +16,11 @@ export async function GET() {
   };
 
   try {
-    const testRef = collection(db, 'produtos');
-    const q = await getDocs(testRef);
+    const testRef = ref(rtdb, 'produtos');
+    const q = query(testRef, limitToLast(1));
+    const snapshot = await get(q);
     diagnostics.firebase.connection = 'SUCCESS';
-    diagnostics.firebase.count = q.size;
+    diagnostics.firebase.hasData = snapshot.exists();
   } catch (error: any) {
     diagnostics.firebase.connection = 'FAILED';
     diagnostics.firebase.error = error.message;

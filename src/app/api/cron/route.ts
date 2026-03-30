@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/firebase';
-import { collection, getDocs, updateDoc, doc } from 'firebase/firestore';
+import { rtdb } from '@/lib/firebase';
+import { ref, get, update } from 'firebase/database';
 
 export async function GET(request: Request) {
   // Rota projetada para ser chamada por um Cron Job
@@ -14,15 +14,16 @@ export async function GET(request: Request) {
   // }
 
   try {
-    const produtosCol = collection(db, 'produtos');
-    const snapshot = await getDocs(produtosCol);
+    const produtosRef = ref(rtdb, 'produtos');
+    const snapshot = await get(produtosRef);
     
-    if (snapshot.empty) {
+    if (!snapshot.exists()) {
       return NextResponse.json({ message: 'Nenhum produto na base de dados.' });
     }
 
+    const data = snapshot.val();
     let updatedCount = 0;
-    const produtos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+    const produtos = Object.keys(data).map(key => ({ id: key, ...data[key] }));
 
     for (const prod of produtos) {
       let novoPreco = prod.price;
@@ -50,8 +51,8 @@ export async function GET(request: Request) {
         }
 
         if (novoPreco > 0 && novoPreco !== prod.price) {
-           const docRef = doc(db, 'produtos', prod.id);
-           await updateDoc(docRef, { price: novoPreco });
+           const productRef = ref(rtdb, `produtos/${prod.id}`);
+           await update(productRef, { price: novoPreco });
            updatedCount++;
         }
 

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/firebase';
-import { collection, doc, setDoc } from 'firebase/firestore';
+import { rtdb } from '@/lib/firebase';
+import { ref, set } from 'firebase/database';
 
 function verifyAuth(request: Request) {
   const authHeader = request.headers.get('authorization');
@@ -31,9 +31,9 @@ export async function POST(request: Request) {
         .pop()
         ?.replace(/[^a-zA-Z0-9_-]/g, '') || Math.random().toString(36).substr(2, 9);
 
-      const docRef = doc(db, 'produtos', safeId);
+      const productRef = ref(rtdb, `produtos/${safeId}`);
       
-      await setDoc(docRef, {
+      await set(productRef, {
         mlb_id: safeId,
         title: item.title || 'Produto sem título',
         price: Number(item.price) || 0,
@@ -42,7 +42,7 @@ export async function POST(request: Request) {
         categoria: 'ofertas',
         score: 100,
         data_atualizacao: new Date().toISOString()
-      }, { merge: true });
+      });
       
       return safeId;
     }));

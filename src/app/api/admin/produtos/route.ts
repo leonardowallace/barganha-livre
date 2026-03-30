@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/firebase';
-import { collection, getDocs, addDoc, deleteDoc, doc, query, orderBy, where } from 'firebase/firestore';
+import { rtdb } from '@/lib/firebase';
+import { ref, get, set, remove, query, limitToLast } from 'firebase/database';
+import { categorizeProduct } from '@/lib/gemini';
 
 export interface ProdutoSalvo {
   id: string;
@@ -18,10 +19,25 @@ function verifyAuth(request: Request) {
   const authHeader = request.headers.get('authorization');
   const expectedPassword = process.env.ADMIN_PASSWORD || 'promox2026';
   
-  if (!authHeader || authHeader !== `Bearer ${expectedPassword}`) {
+  if (!authHeader) {
+    console.error('[AUTH] Falha: Header Authorization ausente.');
     return false;
   }
-  return true;
+
+  // Suporta tanto "Bearer senha" quanto apenas "senha"
+  const token = authHeader.startsWith('Bearer ') 
+    ? authHeader.split(' ')[1] 
+    : authHeader;
+
+  const isMatch = token === expectedPassword;
+
+  if (!isMatch) {
+    console.error(`[AUTH] Falha: Token incompatível.`);
+  } else {
+    console.log('[AUTH] Sucesso: Token validado.');
+  }
+
+  return isMatch;
 }
 
 export async function GET(request: Request) {
@@ -30,14 +46,31 @@ export async function GET(request: Request) {
   }
 
   try {
-    const produtosCol = collection(db, 'produtos');
-    const q = query(produtosCol, orderBy('data_adicionado', 'desc'));
-    const snapshot = await getDocs(q);
-    const produtos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const produtosRef = ref(rtdb, 'produtos');
+    const q = query(produtosRef, limitToLast(100));
+    const snapshot = await get(q);
+    
+    if (!snapshot.exists()) {
+      return NextResponse.json([]);
+    }
+
+    const data = snapshot.val();
+    const produtos: ProdutoSalvo[] = Object.keys(data).map(key => ({
+        id: key,
+        ...data[key]
+    }));
+
+    // Ordenação manual: mais seguro para documentos legados
+    produtos.sort((a, b) => {
+        const dateA = a.data_adicionado ? new Date(a.data_adicionado).getTime() : 0;
+        const dateB = b.data_adicionado ? new Date(b.data_adicionado).getTime() : 0;
+        return dateB - dateA;
+    });
+
     return NextResponse.json(produtos);
   } catch (error: any) {
-    console.error('Firestore Read Error:', error);
-    return NextResponse.json({ error: 'Erro ao ler produtos do Firestore: ' + error.message }, { status: 500 });
+    console.error('[API] RTD Read Error:', error);
+    return NextResponse.json({ error: 'Erro ao ler produtos do RTD: ' + error.message }, { status: 500 });
   }
 }
 
@@ -48,95 +81,114 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    console.log('[PIPELINE] 1. Entrada do Link:', body.url);
-    console.log('[PIPELINE] 2. Categoria:', body.categoria);
-
-    let { url, categoria, title: providedTitle, price: providedPrice, image: providedImage } = body;
+    let { url, categoria } = body;
 
     if (!url || !categoria) {
-      console.error('[PIPELINE] FALHA: URL ou Categoria ausentes.');
       return NextResponse.json({ error: 'URL e categoria são obrigatórios' }, { status: 400 });
     }
 
-    // Normalização da URL
-    const originalUrl = url;
-    url = url.split('#')[0].split('?')[0]; 
-    console.log('[PIPELINE] 3. URL Normalizada:', url);
+    console.log('[PIPELINE] 1. Recebido URL:', url);
 
-    let title = providedTitle || '';
-    let price = providedPrice || 0;
-    let image = providedImage || '';
+    // Extração inteligente de IDs
+    let mlbId = '';
+    const urlObj = new URL(url);
+    const wid = urlObj.searchParams.get('wid') || urlObj.searchParams.get('item_id');
     
-    // Extração robusta de ID (MLB ou UUID de Lista)
-    let mlbId = url.match(/MLB[-]?(\d+)/i)?.[1];
-    if (mlbId) {
-      mlbId = `MLB${mlbId}`;
+    if (wid && wid.startsWith('MLB')) {
+      mlbId = wid;
     } else {
-      const listMatch = url.match(/lists\/([a-zA-Z0-9-]+)/i) || url.match(/sec\/([a-zA-Z0-9]+)/i);
-      mlbId = listMatch ? listMatch[1] : `ID_${Math.random().toString(36).substr(2, 9)}`;
+      const match = url.match(/MLB[-]?(\d+)/i);
+      if (match) mlbId = `MLB${match[1]}`;
     }
-    console.log('[PIPELINE] 4. ID Extraído:', mlbId);
 
-    // Web Scraping fallback se não vier do cliente
-    if (!title || !image) {
-      console.log('[PIPELINE] 5. Tentando extração via servidor...');
+    if (!mlbId) {
+      return NextResponse.json({ error: 'Nenhum ID do Mercado Livre identificado nesta URL.' }, { status: 400 });
+    }
+
+    console.log('[PIPELINE] 2. ID MLB Identificado:', mlbId);
+
+    // Função auxiliar para fetch com timeout
+    async function fetchWithTimeout(resource: string, options: any = {}) {
+      const { timeout = 15000 } = options; 
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), timeout);
+      
       try {
-        const pageRes = await fetch(url, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          }
-        });
-        console.log('[PIPELINE] 6. Status Scraper:', pageRes.status);
-        const html = await pageRes.text();
-        const titleMatch = html.match(/property=["']og:title["']\s+content=["']([^"']+)["']/i) || 
-                           html.match(/content=["']([^"']+)["']\s+property=["']og:title["']/i);
-        const imageMatch = html.match(/property=["']og:image["']\s+content=["']([^"']+)["']/i) || 
-                           html.match(/content=["']([^"']+)["']\s+property=["']og:image["']/i);
-        const priceMatch = html.match(/itemprop=["']price["']\s+content=["']([^"']+)["']/i) || 
-                           html.match(/"price":\s*(\d+(?:\.\d+)?)/i); 
-        
-        if (titleMatch) title = titleMatch[1].replace(/\s*\|\s*Mercado\s*Livre\s*/i, '').trim();
-        if (imageMatch) image = imageMatch[1];
-        if (priceMatch) price = parseFloat(priceMatch[1]);
-        
-        console.log('[PIPELINE] 7. Dados Extraídos:', { title, price, hasImage: !!image });
-      } catch (e: any) {
-        console.error('[PIPELINE] ERRO Scraper:', e.message);
+        const response = await fetch(resource, { ...options, signal: controller.signal });
+        clearTimeout(id);
+        return response;
+      } catch (error) {
+        clearTimeout(id);
+        throw error;
       }
     }
 
-    // Etapa 6 — FALLBACK (Cria mesmo se falhar extração, mas com dados mínimos)
-    if (!title) title = "Produto Importado";
-    if (!image) image = "https://placehold.co/400x400?text=ML";
+    let mlData: any = null;
 
-    // Verificação de duplicata (opcional, pode ser relaxado se ID mudar)
-    const produtosCol = collection(db, 'produtos');
-    const q = query(produtosCol, where('mlb_id', '==', mlbId), where('categoria', '==', categoria));
-    const existing = await getDocs(q);
+    try {
+      const resItem = await fetchWithTimeout(`https://api.mercadolibre.com/items/${mlbId}`);
+      if (resItem.ok) mlData = await resItem.json();
+    } catch (e) {}
+
+    if (!mlData) {
+      try {
+        const resProd = await fetchWithTimeout(`https://api.mercadolibre.com/products/${mlbId}`);
+        if (resProd.ok) mlData = await resProd.json();
+      } catch (e) {}
+    }
+
+    if (!mlData) {
+      try {
+        const pageRes = await fetchWithTimeout(url, {
+          headers: { 'User-Agent': 'Mozilla/5.0' },
+          timeout: 10000
+        });
+        if (pageRes.ok) {
+          const html = await pageRes.text();
+          const titleMatch = html.match(/<h1[^>]*>([^<]+)<\/h1>/i) || html.match(/property=["']og:title["']\s+content=["']([^"']+)["']/i);
+          const imageMatch = html.match(/property=["']og:image["']\s+content=["']([^"']+)["']/i);
+          const priceMatch = html.match(/"price":\s*(\d+(?:\.\d+)?)/i);
+          if (titleMatch) {
+            mlData = {
+              title: titleMatch[1].trim(),
+              price: priceMatch ? parseFloat(priceMatch[1]) : 0,
+              thumbnail: imageMatch ? imageMatch[1] : '',
+              permalink: url
+            };
+          }
+        }
+      } catch (e) {}
+    }
     
-    if (!existing.empty) {
-      console.log('[PIPELINE] Produto já existente:', mlbId);
-      // Opcional: Atualizar em vez de retornar erro? Por enquanto mantemos erro para o usuário saber.
+    if (!mlData) {
+      return NextResponse.json({ error: 'Falha ao obter dados do Mercado Livre. Verifique a URL.' }, { status: 504 });
+    }
+
+    if (categoria === 'automatico') {
+      const title = mlData.title || mlData.name || '';
+      const description = mlData.description || '';
+      categoria = await categorizeProduct(title, description);
     }
 
     const novoProduto = {
       mlb_id: mlbId,
-      title,
-      price,
-      image: image.replace('-W.', '-O.'),
-      permalink: originalUrl, // Mantém o original para o redirecionamento de afiliado
+      title: (mlData.title || mlData.name || 'Produto Mercado Livre').substring(0, 150),
+      price: Number(mlData.price) || (mlData.buy_box_winner?.price) || 0,
+      image: (mlData.pictures?.[0]?.url || mlData.thumbnail || mlData.image || '').replace('-I.', '-O.'),
+      permalink: mlData.permalink || url,
       categoria,
       score: 100,
       data_adicionado: new Date().toISOString()
     };
 
-    console.log('[PIPELINE] 8. Salvando no Firestore:', mlbId);
-    const docRef = await addDoc(produtosCol, novoProduto);
-    console.log('[PIPELINE] 9. SUCESSO! Link Afiliado será gerado no GET.');
+    // Salvamento no Realtime Database
+    const productRef = ref(rtdb, `produtos/${mlbId}`);
+    await set(productRef, novoProduto);
 
-    return NextResponse.json({ success: true, id: docRef.id });
+    return NextResponse.json({ success: true, id: mlbId });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message || 'Erro interno' }, { status: 500 });
+    console.error('[ERRO] Pipeline:', error.message);
+    return NextResponse.json({ error: error.message || 'Erro interno ao processar produto' }, { status: 500 });
   }
 }
 
@@ -153,8 +205,8 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'ID é obrigatório' }, { status: 400 });
     }
 
-    const docRef = doc(db, 'produtos', id);
-    await deleteDoc(docRef);
+    const productRef = ref(rtdb, `produtos/${id}`);
+    await remove(productRef);
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

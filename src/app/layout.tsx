@@ -4,14 +4,17 @@ import './globals.css';
 import Navbar from '@/components/Navbar';
 import { ThemeProvider } from '@/components/ThemeProvider';
 import AdBanner from '@/components/AdBanner';
+import { getCategoriasVivas } from '@/lib/products';
 
 const inter = Inter({ subsets: ['latin'], display: 'swap' });
 // ... (metadata remains same)
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const categories = await getCategoriasVivas();
+
   return (
     <html lang="pt-BR" className="scroll-smooth" suppressHydrationWarning>
       <head>
@@ -43,7 +46,7 @@ export default function RootLayout({
       </head>
       <body className={`${inter.className} bg-gray-50 dark:bg-[#020617] min-h-screen flex flex-col text-gray-900 dark:text-gray-100 antialiased transition-colors duration-300`}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange={false}>
-          <Navbar />
+          <Navbar initialCategories={categories} />
           <div className="flex-grow flex flex-col lg:flex-row max-w-[1700px] mx-auto w-full group/layout">
             {/* Sidebar Esquerda (Anúncio) */}
             <aside className="hidden xl:block w-[180px] flex-shrink-0 pt-8 pl-4 opacity-80 hover:opacity-100 transition-opacity">

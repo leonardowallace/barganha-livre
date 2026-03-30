@@ -3,29 +3,37 @@
 import { useEffect, useState } from 'react';
 import ProductCard from './ProductCard';
 import SkeletonCard from './SkeletonCard';
-import { ProdutoAfiliado } from '@/app/api/produtos/route';
+import { ProdutoAfiliado } from '@/app/api/v1/produtos/route';
 
 interface ProductListProps {
   categoria: string;
   title: string;
+  initialData?: ProdutoAfiliado[];
 }
 
-export default function ProductList({ categoria, title }: ProductListProps) {
-  const [produtos, setProdutos] = useState<ProdutoAfiliado[]>([]);
-  const [loading, setLoading] = useState(true);
+export default function ProductList({ categoria, title, initialData }: ProductListProps) {
+  const [produtos, setProdutos] = useState<ProdutoAfiliado[]>(initialData || []);
+  const [loading, setLoading] = useState(!initialData);
   const [error, setError] = useState('');
 
   useEffect(() => {
+    if (initialData && initialData.length > 0) {
+      setLoading(false);
+      return;
+    }
+    
     async function fetchProducts() {
       try {
         setLoading(true);
-        const res = await fetch(`/api/produtos?categoria=${encodeURIComponent(categoria)}`);
+        const res = await fetch(`/api/v1/produtos?categoria=${encodeURIComponent(categoria)}`, { cache: 'no-store' });
         if (!res.ok) {
           throw new Error('Falha ao carregar produtos');
         }
         const data = await res.json();
+        console.log(`[XPROMO] ${data.length} produtos recebidos.`);
         setProdutos(data);
       } catch (err: any) {
+        console.error('[XPROMO] Erro ao carregar:', err.message);
         setError(err.message || 'Erro desconhecido ao carregar produtos do Mercado Livre.');
       } finally {
         setLoading(false);
