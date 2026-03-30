@@ -16,6 +16,13 @@ export interface ProdutoAfiliado {
   permalink?: string;
 }
 
+function sanitizeAffiliateUrl(url: string): string {
+  if (!url) return '';
+  // Garante que o URL tenha protocolo absoluto para não ser tratado como caminho relativo
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  return `https://${url}`;
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -34,7 +41,8 @@ export async function GET(request: Request) {
       const prod = data[key];
       const permalink = prod.permalink || '';
       const separator = permalink.includes('?') ? '&' : '?';
-      const affiliate_url = prod.affiliate_url || `${permalink}${separator}matt_tool=55704581&matt_word=rodriguesleonardo2022060705062`;
+      const rawUrl = prod.affiliate_url || `${permalink}${separator}matt_tool=55704581&matt_word=rodriguesleonardo2022060705062`;
+      const affiliate_url = sanitizeAffiliateUrl(rawUrl);
 
       return {
         id: key,

@@ -44,10 +44,17 @@ export const CATEGORY_NAMES: Record<string, string> = {
   calcados: 'Calçados',
 };
 
+function sanitizeAffiliateUrl(url: string): string {
+  if (!url) return '';
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  return `https://${url}`;
+}
+
 function generateAffiliateUrl(permalink: string): string {
     if (!permalink) return '';
-    const separator = permalink.includes('?') ? '&' : '?';
-    return `${permalink}${separator}matt_tool=55704581&matt_word=rodriguesleonardo2022060705062`;
+    const cleanPermalink = sanitizeAffiliateUrl(permalink);
+    const separator = cleanPermalink.includes('?') ? '&' : '?';
+    return `${cleanPermalink}${separator}matt_tool=55704581&matt_word=rodriguesleonardo2022060705062`;
 }
 
 export async function getProdutos(categoria?: string, limitCount = 100) {
@@ -64,7 +71,7 @@ export async function getProdutos(categoria?: string, limitCount = 100) {
     let docs: ProdutoAfiliado[] = Object.keys(data).map(key => ({
         id: key,
         ...data[key],
-        affiliate_url: data[key].affiliate_url || generateAffiliateUrl(data[key].permalink || '')
+        affiliate_url: sanitizeAffiliateUrl(data[key].affiliate_url || generateAffiliateUrl(data[key].permalink || ''))
     }));
 
     if (categoria && categoria !== 'ofertas' && categoria !== 'todos') {
