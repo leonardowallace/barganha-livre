@@ -12,6 +12,8 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState({ text: '', type: '' });
   const [produtos, setProdutos] = useState<any[]>([]);
+  const [vitrineUrl, setVitrineUrl] = useState('');
+
 
   // Simple Authenticator
   const [password, setPassword] = useState('');
@@ -143,12 +145,12 @@ export default function AdminPage() {
         if (!manualHtml) throw new Error('Cole o código-fonte da página primeiro.');
         items = processVitrineHtml(manualHtml);
       } else {
-        const baseUrl = 'https://www.mercadolivre.com.br/social/rodriguesleonardo2022060705062/lists/765f49c4-4f0c-4da3-9d46-e3ffe7e32ce2?matt_tool=55704581&forceInApp=true';
+        const urlToSync = vitrineUrl || 'https://www.mercadolivre.com.br/social/rodriguesleonardo2022060705062/lists/765f49c4-4f0c-4da3-9d46-e3ffe7e32ce2?matt_tool=55704581&forceInApp=true';
         let allItems: any[] = [];
         
         for (let page = 1; page <= 5; page++) {
           setMsg({ text: `Buscando produtos da página ${page}...`, type: 'info' });
-          const urlVitrine = page === 1 ? baseUrl : `${baseUrl}&page=${page}`;
+          const urlVitrine = page === 1 ? urlToSync : `${urlToSync}${urlToSync.includes('?') ? '&' : '?'}page=${page}`;
           
           let html = '';
           try {
@@ -457,20 +459,41 @@ export default function AdminPage() {
         </summary>
         <div className="mt-6 bg-gray-50/50 dark:bg-slate-800/20 p-8 rounded-[2.5rem] border border-gray-100 dark:border-slate-800/50">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
-            <div>
+            <div className="flex-grow">
               <h2 className="text-xl font-black text-gray-900 dark:text-white flex items-center gap-3">
-                Sync Automático (Em breve)
+                Sincronização em Massa
               </h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Sincronização em massa via Vitrine Social.</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Carregue todos os produtos de uma Vitrine Social do Mercado Livre automaticamente.</p>
+              
+              <div className="mt-4">
+                <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5 ml-1">Link da Vitrine (Opcional - usa padrão se vazio)</label>
+                <input 
+                  type="url" 
+                  value={vitrineUrl}
+                  onChange={(e) => setVitrineUrl(e.target.value)}
+                  placeholder="https://www.mercadolivre.com.br/social/..."
+                  className="w-full px-4 py-3 border border-gray-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 dark:text-white text-sm outline-none focus:ring-2 focus:ring-blue-500 transition-all font-medium"
+                />
+              </div>
             </div>
           </div>
+          
           <button
             onClick={handleSyncVitrine}
             disabled={loadingSync}
-            className="w-full py-4 rounded-2xl flex items-center justify-center gap-3 font-bold text-gray-400 border-2 border-dashed border-gray-200 dark:border-slate-800 cursor-not-allowed"
+            className={`w-full py-4 rounded-2xl flex items-center justify-center gap-3 font-black transition-all shadow-lg ${
+              loadingSync 
+                ? 'bg-blue-400 cursor-not-allowed text-white' 
+                : 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20 active:scale-[0.98] text-white'
+            }`}
           >
-            Sincronização Desativada Temporariamente
+            {loadingSync ? (
+              <><svg className="animate-spin h-5 w-5 text-white" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Sincronizando Produtos...</>
+            ) : (
+              <><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg> Iniciar Sincronização em Massa</>
+            )}
           </button>
+
         </div>
       </details>
 
