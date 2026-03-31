@@ -45,15 +45,13 @@ O projeto utiliza a stack moderna **Next.js 15+ (App Router)** com foco em estab
     - Integração com a **API do Mercado Livre** via Proxy para evitar CORS.
     - Classificação de produtos utilizando o SDK do **Google Gemini AI**.
 3.  **Banco de Dados (Firebase Realtime Database)**:
-    - Armazenamento centralizado de produtos.
-    - Atualização em tempo real entre admin e vitrine.
-    - Estrutura leve e otimizada para buscas rápidas por categoria.
-
-### Fluxo de Dados
-1.  **Input**: Admin insere uma URL do Mercado Livre ou sincroniza uma vitrine inteira.
-2.  **Processamento**: O sistema extrai o ID (MLB), busca dados técnicos e envia para a IA categorizar.
-3.  **Persistence**: Dados formatados são salvos no **RTDB**.
-4.  **Delivery**: O frontend consome o RTDB (ou API intermediária) e renderiza para o usuário final com o link de afiliado injetado.
+1.  **Frontend (Next.js 16 + React 19 + Tailwind CSS 4)**:
+    - Interface responsiva com foco em Mobile-First e Performance.
+    - Sistema de busca assíncrono otimizado para a nova arquitetura do Next.js.
+2.  **Backend (Next.js API Routes + Firebase Admin SDK)**:
+    - Endpoints administrativos protegidos por `ADMIN_PASSWORD`.
+    - Uso exclusivo de **Firebase Admin SDK** para operações de escrita, garantindo integridade dos dados.
+    - Classificação de produtos utilizando **Google Gemini AI** com prompts de agrupamento consolidados.
 
 ---
 
@@ -74,20 +72,18 @@ O projeto utiliza a stack moderna **Next.js 15+ (App Router)** com foco em estab
 2.  **Configurar Variáveis de Ambiente**:
     Crie um arquivo `.env.local`:
     ```env
-    # Firebase Config
+    # Firebase Client Config (Público)
     NEXT_PUBLIC_FIREBASE_API_KEY=...
     NEXT_PUBLIC_FIREBASE_PROJECT_ID=...
-    NEXT_PUBLIC_FIREBASE_DATABASE_URL=...
+    ...
 
-    # ML Affiliates
-    MATT_TOOL=55704581
-    MATT_WORD=rodriguesleonardo2022060705062
+    # Firebase Admin Config (Segredo do Servidor)
+    FIREBASE_CLIENT_EMAIL=...
+    FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
 
-    # Gemini AI
+    # Gemini AI & Admin
     GEMINI_API_KEY=...
-
-    # Admin Security
-    ADMIN_PASSWORD=sua_senha_aqui
+    ADMIN_PASSWORD=...
     ```
 3.  **Rodar**:
     ```bash
@@ -97,9 +93,9 @@ O projeto utiliza a stack moderna **Next.js 15+ (App Router)** com foco em estab
 ---
 
 ## 🛠️ Decisões de Engenharia
-- **Abandono do Firestore**: Migramos 100% para o **Realtime Database** para simplificar a estrutura de dados e reduzir a latência de atualização para o usuário final.
-- **Scraping Server-Side**: Implementamos uma camada de proxy para garantir que as informações de preço e imagem sejam obtidas mesmo quando a API oficial possui restrições.
-- **IA Local vs Client**: O processamento de IA é feito estritamente no lado do servidor para proteger as chaves de API e garantir a sanitização dos dados.
+- **Migração para Admin SDK**: Resolvemos o alerta de segurança do Firebase migrando todas as escritas para o lado do servidor, permitindo regras de banco de dados estritamente restritivas (`.write: false`).
+- **Navegação Consolidada**: Reduzimos 23 categorias para 7 grupos estratégicos para melhorar o tempo de decisão do usuário (Hick's Law).
+- **Compatibilidade Next.js 16**: Refatoramos o tratamento de `searchParams` para suportar as mudanças assíncronas da versão mais recente do framework.
 
 ---
 **Desenvolvido por leonardowallace - 2026**
