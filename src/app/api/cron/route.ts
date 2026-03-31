@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { rtdb } from '@/lib/firebase';
-import { ref, get, update } from 'firebase/database';
+import { dbAdmin } from '@/lib/firebase-admin';
 
 export async function GET(request: Request) {
   // Rota projetada para ser chamada por um Cron Job
@@ -14,8 +13,7 @@ export async function GET(request: Request) {
   // }
 
   try {
-    const produtosRef = ref(rtdb, 'produtos');
-    const snapshot = await get(produtosRef);
+    const snapshot = await dbAdmin.ref('produtos').get();
     
     if (!snapshot.exists()) {
       return NextResponse.json({ message: 'Nenhum produto na base de dados.' });
@@ -29,12 +27,11 @@ export async function GET(request: Request) {
       let novoPreco = prod.price;
 
       try {
-        console.log(`[Cron] Verificando preço de: ${prod.title}`);
+        console.log(`[Cron] Atualizando preços de ${prod.title}`);
         
         const pageRes = await fetch(prod.permalink, {
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept-Language': 'pt-BR,pt;q=0.9'
           },
           cache: 'no-store'
         });
@@ -51,13 +48,12 @@ export async function GET(request: Request) {
         }
 
         if (novoPreco > 0 && novoPreco !== prod.price) {
-           const productRef = ref(rtdb, `produtos/${prod.id}`);
-           await update(productRef, { price: novoPreco });
+           await dbAdmin.ref(`produtos/${prod.id}`).update({ price: novoPreco });
            updatedCount++;
         }
 
-        // Delay para mitigar bots / bloqueios
-        await new Promise(r => setTimeout(r, 1000));
+        // Delay para evitar bloqueios
+        await new Promise(r => setTimeout(r, 1500));
 
       } catch (e) {
         console.error(`[Cron] Erro ao atualizar ${prod.id}:`, e);
@@ -66,13 +62,13 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ 
         success: true, 
-        message: 'Rotina de atualização finalizada.', 
+        message: 'Rotina de atualização de preços finalizada.', 
         total_verificados: produtos.length,
         total_atualizados: updatedCount
     });
 
   } catch (error: any) {
-    console.error('[Cron] Falha crítica:', error);
-    return NextResponse.json({ error: error.message || 'Erro interno no Cron' }, { status: 500 });
+    console.error('[Cron] Falha:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

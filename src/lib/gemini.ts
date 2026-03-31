@@ -1,78 +1,79 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { CATEGORY_NAMES } from "./products";
 
+const VALID_CATEGORY_IDS = Object.keys(CATEGORY_NAMES);
+
 /**
- * Categoriza um produto usando o SDK direto do Gemini (Google AI Studio).
- * Requer GEMINI_API_KEY no .env.local.
+ * Categoriza por palavras-chave (funciona offline, sem IA).
+ * Mapeia para as 7 categorias consolidadas (enxugadas).
  */
-export async function categorizeProduct(title: string, description: string = ""): Promise<string> {
+function categorizeByKeywords(title: string): string {
+  const t = title.toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  // Tecnologia & Games
+  if (/celular|smartphone|iphone|galaxy|redmi|moto|xiaomi|nintendo|switch|playstation|ps5|ps4|xbox|video.?game|notebook|laptop|computador|monitor|mouse|teclado|ssd|hd externo|wi.?fi|camera|drone|tv |televisao|smart.?tv|caixa.*som|alexa|fone.*bluetooth|headset|relogio.*inteligente|smartwatch/i.test(t)) return "tecnologia";
+
+  // Casa & Eletro
+  if (/liquidificador|cafeteira|micro.?ondas|geladeira|fogao|batedeira|fritadeira|air.*fryer|aspirador|ferro.*passar|maquina.*lavar|ventilador|ar.*condicionado|sofa|armario|prateleira|estante|cama|colchao|tapete|panela|frigideira|mesa|cadeira|escritorio|papelaria/i.test(t)) return "casa_eletro";
+
+  // Construção & Ferramentas
+  if (/furadeira|parafusadeira|serra|martelo|alicate|chave.*fenda|esmerilhadeira|ferramenta|cimento|tinta|piso|revestimento|eletrico|hidraulico|tomada|interruptor/i.test(t)) return "construcao";
+
+  // Moda & Beleza
+  if (/camisa|camiseta|blusa|calca|jaqueta|vestido|tenis|sapato|bota|bolsa|relogio|joia|perfume|shampoo|maquiagem|batom|creme|hidratante|secador|chapinha|barbeador/i.test(t)) return "moda_beleza";
+
+  // Saúde & Esportes
+  if (/whey|creatina|suplemento|vitamina|academia|musculacao|bicicleta|esteira|halter|tenis.*corrida|esporte|futebol|basquete|yoga|saude|termometro|massageador/i.test(t)) return "saude_esportes";
+
+  // Lifestyle & Kids (Livros, Música, Bebês, Brinquedos, Pets)
+  if (/livro|literatura|biografia|manga|hq|quadrinho|violao|guitarra|teclado.*musical|brinquedo|boneca|lego|bebe|fralda|carrinho.*bebe|pet |racao|aquario/i.test(t)) return "lifestyle_kids";
+
+  // Outros & Automotivo
+  if (/carro|moto\s|pneu|oleo.*motor|acessorio.*automotivo|supermercado|alimento|bebida|vinho|cerveja/i.test(t)) return "outros";
+
+  return "tecnologia"; // Fallback mais comum
+}
+
+/**
+ * Categoriza um produto usando IA (Gemini) ou Keywords como fallback.
+ * Baseado nas 7 categorias consolidadas.
+ */
+export async function categorizeProduct(title: string): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY;
 
   if (!apiKey || apiKey === "SUA_CHAVE_AQUI_GEMINI") {
-    console.warn("GEMINI_API_KEY não configurada. Fallback para 'ofertas'.");
-    return "ofertas";
+    return categorizeByKeywords(title);
   }
 
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
 
-    // Criar a lista de categorias para o prompt
-    const categoriesList = Object.entries(CATEGORY_NAMES)
-      .map(([id, name]) => `- ${id}: ${name}`)
+    const categoriesList = VALID_CATEGORY_IDS
+      .map(id => `- ${id}: ${CATEGORY_NAMES[id]}`)
       .join("\n");
 
-    const prompt = `
-Você é um classificador de produtos de e-commerce de alta precisão.
-Sua missão é extrair o ID da categoria correta para o produto abaixo, baseando-se no TÍTULO e na DESCRIÇÃO.
+    const prompt = `Você é um especialista em e-commerce. Categorize o produto abaixo em uma destas 7 categorias.
+Retorne APENAS o ID da categoria.
 
-REGRAS DE OURO:
-1. Retorne APENAS o ID da categoria (ex: celulares). Nunca use frases ou pontuação.
-2. CATEGORIA 'celulares': Inclui Smartphones, iPhones, Celulares comuns e TODOS os seus acessórios (Carregadores, Cabos, Capinhas, Películas, Fones Bluetooth, Smartwatches, Power Banks).
-3. CATEGORIA 'informatica': Inclui Notebooks, PCs, Monitores, Mouses, Teclados, SSDs, Roteadores, Impressoras e Peças de Hardware.
-4. CATEGORIA 'games': Inclui Consoles (Switch, PS5, Xbox), Controles, Jogos e Acessórios para Cinema/Games.
-5. CATEGORIA 'eletronicos': Use para TVs, Caixas de Som (JBL, etc), Fones de Ouvido Grandes, Câmeras Profissionais e Projetores.
-6. Se o produto for claramente de informática mas também um eletrônico, prefira 'informatica'.
-7. Use 'ofertas' APENAS se o produto não tiver NENHUMA categoria correspondente na lista abaixo.
+PRODUTO: "${title}"
 
-ESTRUTURA DE DADOS:
-Título: ${title}
-Descrição: ${description}
-
-LISTA DE CATEGORIAS VÁLIDAS (SÓ USE ESTES IDs):
+CATEGORIAS DISPONÍVEIS (ID: Descrição):
 ${categoriesList}
 
-ID ESCOLHIDO (APENAS O ID):`;
+ID DA CATEGORIA:`;
 
     const result = await model.generateContent(prompt);
-    const response = await result.response;
-    let categoryId = response.text().toLowerCase().trim();
+    const rawText = result.response.text().toLowerCase().trim().replace(/[`'".\s]/g, "");
 
-    // LOG DE DEBUG
-    console.log(`[Gemini] Produto: ${title.substring(0, 30)} | Sugestão: ${categoryId}`);
+    if (VALID_CATEGORY_IDS.includes(rawText)) return rawText;
+    
+    // Fallback se a IA falhar ou retornar algo fora da lista
+    return categorizeByKeywords(title);
 
-    // Validar se o ID retornado existe em nossa taxonomia local
-    if (CATEGORY_NAMES[categoryId]) {
-      return categoryId;
-    }
-
-    // Tentar encontrar por nome amigável se a IA retornar o nome por engano
-    const foundByIdName = Object.keys(CATEGORY_NAMES).find(
-      key => categoryId.includes(key) || categoryId === CATEGORY_NAMES[key].toLowerCase()
-    );
-
-    if (foundByIdName) {
-      return foundByIdName;
-    }
-
-    console.warn(`[Gemini] Categoria desconhecida: ${categoryId}`);
-
-    console.warn(`Gemini retornou categoria desconhecida: "${categoryId}". Fallback para 'ofertas'.`);
-    return "ofertas";
-  } catch (error: any) {
-    // Log de erro no console
-    console.error("Erro Gemini:", error.message);
-    console.error("Falha na classificação via Gemini SDK:", error);
-    return "ofertas";
+  } catch (error) {
+    return categorizeByKeywords(title);
   }
 }

@@ -14,35 +14,17 @@ export interface ProdutoAfiliado {
   permalink?: string;
 }
 
+// Categorias consolidadas para uma navegação mais limpa (enxugada)
 export const CATEGORY_NAMES: Record<string, string> = {
-  ofertas: 'Ofertas',
-  eletronicos: 'Eletrônicos, Áudio & Vídeo',
-  casa: 'Casa & Móveis',
-  moda: 'Moda (Roupas & Calçados)',
-  saude: 'Saúde',
-  esportes: 'Esportes & Fitness',
-  beleza: 'Beleza & Cuidado Pessoal',
-  automotivo: 'Acessórios Automotivos',
-  veiculos: 'Veículos',
-  supermercado: 'Alimentos & Bebidas',
-  petshop: 'Pet Shop',
-  bebes: 'Bebês',
-  brinquedos: 'Brinquedos & Hobbies',
-  games: 'Games',
-  informatica: 'Informática',
-  celulares: 'Celulares & Telefones',
-  ferramentas: 'Ferramentas',
-  construcao: 'Construção',
-  livros: 'Livros, Revistas & Comics',
-  musica: 'Instrumentos Musicais',
-  cameras: 'Câmeras & Acessórios',
-  industria: 'Indústria & Comércio',
-  escritorio: 'Arte, Papelaria & Armarinho',
-  servicos: 'Serviços',
-  eletrodomesticos: 'Eletrodomésticos',
-  relogios: 'Joias & Relógios',
-  calcados: 'Calçados',
+  tecnologia: 'Tecnologia & Games',
+  casa_eletro: 'Casa & Eletro',
+  construcao: 'Construção & Ferramentas',
+  moda_beleza: 'Moda & Beleza',
+  saude_esportes: 'Saúde & Esportes',
+  lifestyle_kids: 'Lifestyle & Kids',
+  outros: 'Outros & Automotivo',
 };
+
 
 function sanitizeAffiliateUrl(url: string): string {
   if (!url) return '';
@@ -51,41 +33,50 @@ function sanitizeAffiliateUrl(url: string): string {
 }
 
 function generateAffiliateUrl(permalink: string): string {
-    if (!permalink) return '';
-    const cleanPermalink = sanitizeAffiliateUrl(permalink);
-    const separator = cleanPermalink.includes('?') ? '&' : '?';
-    return `${cleanPermalink}${separator}matt_tool=55704581&matt_word=rodriguesleonardo2022060705062`;
+  if (!permalink) return '';
+  const cleanPermalink = sanitizeAffiliateUrl(permalink);
+  const separator = cleanPermalink.includes('?') ? '&' : '?';
+  return `${cleanPermalink}${separator}matt_tool=55704581&matt_word=rodriguesleonardo2022060705062`;
 }
 
-export async function getProdutos(categoria?: string, limitCount = 100) {
+export async function getProdutos(categoria?: string, limitCount = 100, searchTerm?: string) {
   try {
     const produtosRef = ref(rtdb, 'produtos');
-    // RTD não tem query de filtragem tão flexível quanto Firestore sem índices complexos
-    // Mas como o volume é baixo, pegamos os últimos 500 e filtramos em memória
-    const q = query(produtosRef, limitToLast(500));
+    const q = query(produtosRef, limitToLast(1000)); // Pega mais itens para busca eficiente
     const snapshot = await get(q);
-    
+
     if (!snapshot.exists()) return [];
 
     const data = snapshot.val();
     let docs: ProdutoAfiliado[] = Object.keys(data).map(key => ({
-        id: key,
-        ...data[key],
-        affiliate_url: sanitizeAffiliateUrl(data[key].affiliate_url || generateAffiliateUrl(data[key].permalink || ''))
+      id: key,
+      ...data[key],
+      affiliate_url: sanitizeAffiliateUrl(data[key].affiliate_url || generateAffiliateUrl(data[key].permalink || ''))
     }));
 
-    if (categoria && categoria !== 'ofertas' && categoria !== 'todos') {
-        const catLower = categoria.toLowerCase();
-        docs = docs.filter(d => d.categoria && d.categoria.toLowerCase() === catLower);
+    // Filtra por categoria
+    if (categoria && categoria !== 'todos') {
+      const catLower = categoria.toLowerCase();
+      docs = docs.filter(d => d.categoria && d.categoria.toLowerCase() === catLower);
+    }
+
+    // Filtra por termo de busca (Case insensitive)
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase().trim();
+      docs = docs.filter(d => 
+        d.title.toLowerCase().includes(term) || 
+        (d.categoria && d.categoria.toLowerCase().includes(term))
+      );
     }
 
     docs.sort((a, b) => {
-        const dateA = a.data_adicionado ? new Date(a.data_adicionado).getTime() : 0;
-        const dateB = b.data_adicionado ? new Date(b.data_adicionado).getTime() : 0;
-        return dateB - dateA;
+      const dateA = a.data_adicionado ? new Date(a.data_adicionado).getTime() : 0;
+      const dateB = b.data_adicionado ? new Date(b.data_adicionado).getTime() : 0;
+      return dateB - dateA;
     });
 
     return docs.slice(0, limitCount);
+
   } catch (error) {
     console.error(`[RTD] Erro ao buscar produtos (${categoria}):`, error);
     return [];
@@ -96,27 +87,32 @@ export async function getCategoriasVivas() {
   try {
     const produtosRef = ref(rtdb, 'produtos');
     const snapshot = await get(produtosRef);
-    
+
     if (!snapshot.exists()) return [];
 
     const data = snapshot.val();
     const categoriasSet = new Set<string>();
-    
+
     Object.values(data).forEach((prod: any) => {
-      if (prod.categoria) categoriasSet.add(prod.categoria);
+      // Ignora produtos sem categoria válida ou com 'ofertas' (legado)
+      if (prod.categoria && prod.categoria !== 'ofertas' && CATEGORY_NAMES[prod.categoria]) {
+        categoriasSet.add(prod.categoria);
+      }
     });
 
-    const categoriasVivas = Array.from(categoriasSet).sort();
-    
-    const result = categoriasVivas.map(id => ({
+    const categoriasVivas = Array.from(categoriasSet);
+
+    // Ordena seguindo a ordem definida em CATEGORY_NAMES
+    const ordemDefinida = Object.keys(CATEGORY_NAMES);
+    categoriasVivas.sort(
+      (a, b) => ordemDefinida.indexOf(a) - ordemDefinida.indexOf(b)
+    );
+
+    return categoriasVivas.map(id => ({
       id,
       name: CATEGORY_NAMES[id] || id.charAt(0).toUpperCase() + id.slice(1),
-      path: id === 'ofertas' ? '/' : `/${id}`
+      path: `/${id}`,
     }));
-
-    result.sort((a, b) => (a.id === 'ofertas' ? -1 : b.id === 'ofertas' ? 1 : 0));
-    
-    return result;
   } catch (error) {
     console.error('[RTD] Erro ao buscar categorias vivas:', error);
     return [];

@@ -3,8 +3,8 @@ import AdBanner from '@/components/AdBanner';
 import { getProdutos } from '@/lib/products';
 
 export default async function Home() {
-  // Busca 24 produtos da categoria 'ofertas'
-  const produtos = await getProdutos('ofertas', 24);
+  // Home exibe TODOS os produtos (sem filtro de categoria)
+  const produtos = await getProdutos(undefined, 24);
 
   return (
     <div className="pt-6 sm:pt-10">
@@ -12,7 +12,7 @@ export default async function Home() {
         {/* Decorative background elements */}
         <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 rounded-full bg-white opacity-10 blur-3xl"></div>
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 w-80 h-80 rounded-full bg-blue-400 opacity-20 blur-3xl"></div>
-        
+
         <div className="relative z-10 flex flex-col items-center">
           <h1 className="text-3xl sm:text-5xl md:text-6xl font-black mb-4 sm:mb-6 tracking-tight text-white drop-shadow-lg leading-tight">
             Descubra o Melhor do <br className="hidden sm:block" />
@@ -29,7 +29,7 @@ export default async function Home() {
         <AdBanner slot="home-top-horizontal" className="h-[90px] md:h-[120px]" />
       </div>
 
-      <ProductList categoria="ofertas" title="Ofertas em Destaque" initialData={produtos} />
+      <ProductList categoria="todos" title="Destaques da Semana" initialData={produtos} />
     </div>
   );
 }
