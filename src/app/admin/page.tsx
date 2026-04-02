@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react';
 import { rtdb } from '@/lib/firebase';
 import { ref, set } from 'firebase/database';
+import { CATEGORY_NAMES } from '@/lib/products';
 
-const categorias = ['automatico', 'ofertas', 'eletronicos', 'casa', 'moda', 'saude', 'estudos', 'esportes', 'beleza', 'automotivo'];
+const categorias = ['automatico', ...Object.keys(CATEGORY_NAMES)];
 
 export default function AdminPage() {
   const [url, setUrl] = useState('');
@@ -431,7 +432,9 @@ export default function AdminPage() {
                 className="w-full px-4 py-3.5 border border-gray-200 dark:border-slate-700 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-slate-800 dark:text-white transition-all outline-none appearance-none cursor-pointer"
               >
                 {categorias.map(cat => (
-                  <option key={cat} value={cat}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</option>
+                  <option key={cat} value={cat}>
+                    {cat === 'automatico' ? 'Automático (IA Gemini)' : (CATEGORY_NAMES[cat] || cat)}
+                  </option>
                 ))}
               </select>
             </div>

@@ -29,7 +29,7 @@ export async function GET(request: Request) {
     const categoria = searchParams.get('categoria');
 
     const produtosRef = ref(rtdb, 'produtos');
-    const q = query(produtosRef, limitToLast(200)); 
+    const q = query(produtosRef, limitToLast(500)); 
     const snapshot = await get(q);
     
     if (!snapshot.exists()) {

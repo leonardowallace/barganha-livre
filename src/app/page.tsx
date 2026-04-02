@@ -4,7 +4,7 @@ import { getProdutos } from '@/lib/products';
 
 export default async function Home() {
   // Home exibe TODOS os produtos (sem filtro de categoria)
-  const produtos = await getProdutos(undefined, 24);
+  const produtos = await getProdutos(undefined, 500);
 
   return (
     <div className="pt-6 sm:pt-10">
@@ -29,7 +29,7 @@ export default async function Home() {
         <AdBanner slot="home-top-horizontal" className="h-[90px] md:h-[120px]" />
       </div>
 
-      <ProductList categoria="todos" title="Destaques da Semana" initialData={produtos} />
+      <ProductList categoria="todos" title="Todas as Promoções" initialData={produtos} />
     </div>
   );
 }
