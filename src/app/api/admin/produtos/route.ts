@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { authAdmin, dbAdmin } from '@/lib/firebase-admin';
+export const dynamic = 'force-dynamic';
 import { categorizeProduct } from '@/lib/gemini';
 
 export interface ProdutoSalvo {

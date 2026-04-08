@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { dbAdmin } from '@/lib/firebase-admin';
+import { authAdmin, dbAdmin } from '@/lib/firebase-admin';
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   // Rota projetada para ser chamada por um Cron Job
