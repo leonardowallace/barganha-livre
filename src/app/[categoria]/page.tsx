@@ -12,8 +12,8 @@ export default async function CategoryPage({ params }: { params: Promise<{ categ
   // Nome amigável da categoria
   const categoryName = CATEGORY_NAMES[categoria] || (categoria.charAt(0).toUpperCase() + categoria.slice(1));
 
-  // Buscar produtos da categoria (limitado a 24 para performance)
-  const produtos = await getProdutos(categoria, 24);
+  // Buscar produtos da categoria (sem limite conforme solicitado)
+  const produtos = await getProdutos(categoria, undefined);
 
   // Se a categoria não existir em nossa lista mestra, damos notFound
   // Isso evita URLs lixo de serem indexadas

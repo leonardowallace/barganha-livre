@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { dbAdmin } from '@/lib/firebase-admin';
+import { authAdmin, dbAdmin } from '@/lib/firebase-admin';
 import { categorizeProduct } from '@/lib/gemini';
 
 export interface ProdutoSalvo {
@@ -14,26 +14,40 @@ export interface ProdutoSalvo {
   data_adicionado: string;
 }
 
-function verifyAuth(request: Request) {
+async function authorize(request: Request) {
   const authHeader = request.headers.get('authorization');
-  const expectedPassword = process.env.ADMIN_PASSWORD || 'promox2026';
-  
-  if (!authHeader) return false;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
 
-  const token = authHeader.startsWith('Bearer ') 
-    ? authHeader.split(' ')[1] 
-    : authHeader;
+  const idToken = authHeader.split('Bearer ')[1];
 
-  return token === expectedPassword;
+  // Suporte a Senha Fixa (promox2026)
+  if (idToken === 'promox2026') {
+    return { uid: 'admin-simple-id', role: 'editor' };
+  }
+
+  try {
+    const decodedToken = await authAdmin.verifyIdToken(idToken);
+    const uid = decodedToken.uid;
+
+    // Buscar role no RTD
+    const snapshot = await dbAdmin.ref(`users/${uid}/role`).get();
+    const role = snapshot.val() || 'viewer';
+
+    return { uid, role };
+  } catch (error) {
+    console.error('[API-AUTH] Erro na verificação do token:', error);
+    return null;
+  }
 }
 
 export async function GET(request: Request) {
-  if (!verifyAuth(request)) {
+  const auth = await authorize(request);
+  if (!auth) {
     return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
   }
 
   try {
-    const snapshot = await dbAdmin.ref('produtos').limitToLast(100).get();
+    const snapshot = await dbAdmin.ref('produtos').get();
     
     if (!snapshot.exists()) {
       return NextResponse.json([]);
@@ -59,8 +73,13 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  if (!verifyAuth(request)) {
+  const auth = await authorize(request);
+  if (!auth) {
     return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
+  }
+
+  if (auth.role !== 'editor') {
+    return NextResponse.json({ error: 'Acesso negado. Apenas editores podem adicionar produtos.' }, { status: 403 });
   }
 
   try {
@@ -123,8 +142,13 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  if (!verifyAuth(request)) {
+  const auth = await authorize(request);
+  if (!auth) {
     return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
+  }
+
+  if (auth.role !== 'editor') {
+    return NextResponse.json({ error: 'Acesso negado. Apenas editores podem deletar produtos.' }, { status: 403 });
   }
 
   try {

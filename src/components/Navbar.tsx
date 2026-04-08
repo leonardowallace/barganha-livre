@@ -60,8 +60,8 @@ export default function Navbar({ initialCategories }: NavbarProps) {
         <div className="flex items-center justify-between h-20 lg:h-16">
           {/* Logo */}
           <div className="flex-shrink-0 flex items-center">
-            <Link href="/" className="font-extrabold text-2xl tracking-tighter text-blue-800 dark:text-blue-400">
-              X <span className="text-yellow-500 font-black">Promo</span>
+            <Link href="/" className="font-extrabold text-2xl tracking-tighter text-blue-700 dark:text-blue-400 hover:scale-105 transition-transform duration-300">
+              X<span className="text-yellow-500 font-black">PROMO</span>
             </Link>
           </div>
 
@@ -73,9 +73,9 @@ export default function Navbar({ initialCategories }: NavbarProps) {
                 placeholder="O que você está procurando hoje?"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-gray-100 dark:bg-slate-800/50 border border-transparent focus:border-blue-500/50 focus:bg-white dark:focus:bg-slate-800 transition-all duration-300 rounded-full py-2 pl-10 pr-4 text-sm focus:outline-none dark:text-gray-200 shadow-sm group-hover:shadow-md"
+                className="w-full bg-gray-50 dark:bg-slate-800/40 border border-gray-100 dark:border-slate-700/50 focus:border-blue-500/50 focus:bg-white dark:focus:bg-slate-800 transition-all duration-300 rounded-2xl py-2.5 pl-11 pr-4 text-sm focus:outline-none dark:text-gray-200 shadow-sm group-hover:shadow-md placeholder:text-gray-400 dark:placeholder:text-gray-500"
               />
-              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500 transition-colors">
+              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500 transition-colors">
                 <SearchIcon />
               </div>
             </form>
@@ -91,15 +91,18 @@ export default function Navbar({ initialCategories }: NavbarProps) {
                   </span>
                 </button>
                 
-                <div className="absolute right-0 mt-0 w-56 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-gray-100 dark:border-slate-800 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
-                  <div className="py-2">
+                <div className="absolute right-0 mt-2 w-64 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-gray-100 dark:border-slate-800 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible translate-y-2 group-hover:translate-y-0 transition-all duration-300 z-50">
+                  <div className="p-2 grid grid-cols-1 gap-1">
                     {CATEGORIES_CONFIG[0].categories.map((cat) => (
                       <Link
                         key={cat.id}
                         href={cat.path}
-                        className="block px-5 py-3 text-sm text-gray-600 dark:text-gray-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-700 dark:hover:text-blue-400 transition-colors font-medium"
+                        className="group/item flex items-center justify-between px-4 py-2.5 text-sm text-gray-600 dark:text-gray-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-700 dark:hover:text-blue-400 transition-all rounded-xl font-semibold"
                       >
-                        {cat.name}
+                        <span>{cat.name}</span>
+                        <span className="opacity-0 -translate-x-2 group-hover/item:opacity-100 group-hover/item:translate-x-0 transition-all duration-200">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14m-7-7 7 7-7 7"/></svg>
+                        </span>
                       </Link>
                     ))}
                   </div>
@@ -136,22 +139,22 @@ export default function Navbar({ initialCategories }: NavbarProps) {
 
         {/* Mobile Categories Scroll */}
         <div 
-          className="overflow-x-auto whitespace-nowrap px-4 py-3" 
+          className="overflow-x-auto whitespace-nowrap px-4 py-4" 
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
           <style dangerouslySetInnerHTML={{__html: `::-webkit-scrollbar { display: none; }`}} />
-          <div className="flex space-x-2">
+          <div className="flex space-x-3">
             <Link 
               href="/" 
-              className="inline-block bg-blue-600 px-4 py-1.5 rounded-full text-[10px] font-bold text-white shadow-lg"
+              className="inline-flex items-center gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-2 rounded-full text-xs font-black text-white shadow-lg shadow-blue-500/20 active:scale-95 transition-transform"
             >
-              🔥 Ofertas
+              <span className="animate-pulse">🔥</span> Ofertas
             </Link>
             {CATEGORIES_CONFIG[0].categories.map((cat) => (
               <Link
                 key={cat.id}
                 href={cat.path}
-                className="inline-block bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 px-4 py-1.5 rounded-full text-[10px] font-bold text-gray-700 dark:text-gray-300 hover:bg-blue-50 dark:hover:bg-slate-700 transition-all"
+                className="inline-block bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 px-5 py-2 rounded-full text-xs font-bold text-gray-600 dark:text-gray-300 hover:bg-blue-50 dark:hover:bg-slate-700 active:scale-95 transition-all shadow-sm"
               >
                 {cat.name}
               </Link>

@@ -22,5 +22,6 @@ if (!admin.apps.length) {
 }
 
 const dbAdmin = admin.database();
+const authAdmin = admin.auth();
 
-export { dbAdmin };
+export { dbAdmin, authAdmin };

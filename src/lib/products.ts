@@ -39,10 +39,10 @@ function generateAffiliateUrl(permalink: string): string {
   return `${cleanPermalink}${separator}matt_tool=55704581&matt_word=rodriguesleonardo2022060705062`;
 }
 
-export async function getProdutos(categoria?: string, limitCount = 500, searchTerm?: string) {
+export async function getProdutos(categoria?: string, limitCount?: number, searchTerm?: string) {
   try {
     const produtosRef = ref(rtdb, 'produtos');
-    const q = query(produtosRef, limitToLast(1000)); // Pega mais itens para busca eficiente
+    const q = query(produtosRef); // Removido limitToLast para trazer tudo
     const snapshot = await get(q);
 
     if (!snapshot.exists()) return [];
@@ -75,7 +75,8 @@ export async function getProdutos(categoria?: string, limitCount = 500, searchTe
       return dateB - dateA;
     });
 
-    return docs.slice(0, limitCount);
+    // Retorna tudo se limitCount for explicitamente undefined ou um valor alto
+    return limitCount ? docs.slice(0, limitCount) : docs;
 
   } catch (error) {
     console.error(`[RTD] Erro ao buscar produtos (${categoria}):`, error);

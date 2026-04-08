@@ -42,7 +42,8 @@ export async function GET(request: Request) {
     
     return NextResponse.json({
       success: true,
-      html: html
+      html: html,
+      url: response.url // Retorna a URL final após redirecionamentos
     });
   } catch (error: any) {
     const errorMsg = error.name === 'AbortError' ? 'Timeout na requisição' : error.message;

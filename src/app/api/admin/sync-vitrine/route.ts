@@ -57,8 +57,10 @@ export async function POST(request: Request) {
       });
 
       results.push({ id: safeId, categoria });
+    }
 
-      // Rate limit do Gemini free tier: 15 req/min → mínimo 4s entre chamadas
+    // Rate limit do Gemini free tier: 15 req/min → mínimo 4s entre chamadas (só se for massa)
+    if (items.length > 1) {
       await new Promise(r => setTimeout(r, 4500));
     }
 

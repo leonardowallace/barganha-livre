@@ -4,7 +4,7 @@ import { getProdutos } from '@/lib/products';
 
 export default async function Home() {
   // Home exibe TODOS os produtos (sem filtro de categoria)
-  const produtos = await getProdutos(undefined, 500);
+  const produtos = await getProdutos(undefined, undefined);
 
   return (
     <div className="pt-6 sm:pt-10">
